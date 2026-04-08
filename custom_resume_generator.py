@@ -89,6 +89,10 @@ async def personalize_section_with_llm(
     prompts = []
 
     # Construct the prompt based on the section
+    # Truncate Job Description and Resume Context to avoid exceeding context window
+    truncated_desc = str(job_details.get('description', 'N/A'))[:2500]
+    truncated_context = str(resume_context)[:3500]
+
     prompt_intro = f"""
     **Task:** Enhance the specified resume section for the target job application.
 
@@ -96,12 +100,12 @@ async def personalize_section_with_llm(
     - Title: {job_details['job_title']}
     - Company: {job_details['company']}
     - Seniority Level: {job_details['level']}
-    - Job Description: {job_details['description']}
+    - Job Description: {truncated_desc}... (truncated for length)
 
     ---
 
     **Full Resume Context (excluding the section being edited):**
-    {resume_context}
+    {truncated_context}... (truncated for length)
 
     **Resume Section to Enhance:** {section_name}
     """
@@ -310,11 +314,16 @@ async def validate_customization(
 
             # Check core fields haven't changed
             for field in ['job_title', 'company', 'dates', 'location']:
-                o_val = str(o_dict.get(field, '')).strip()
-                c_val = str(c_dict.get(field, '')).strip()
-                # Use case-insensitive comparison to avoid false positives on minor formatting
-                if o_val.lower() != c_val.lower():
-                    return False, f"Core experience field '{field}' was changed from '{o_val}' to '{c_val}'."
+                # Normalize whitespace (replaces \xa0, \t, \n with ' ' and strips)
+                import re
+                def clean(val):
+                    return re.sub(r'\s+', ' ', str(val)).strip().lower()
+
+                o_val = clean(o_dict.get(field, ''))
+                c_val = clean(c_dict.get(field, ''))
+                
+                if o_val != c_val:
+                    return False, f"Core experience field '{field}' was changed from '{o_dict.get(field)}' to '{c_dict.get(field)}'."
         
         return True, "Experience validation passed."
 
@@ -329,10 +338,14 @@ async def validate_customization(
             c_dict = cust.model_dump() if hasattr(cust, 'model_dump') else cust
 
             for field in ['name', 'link']:
-                o_val = str(o_dict.get(field, '')).strip()
-                c_val = str(c_dict.get(field, '')).strip()
-                if o_val.lower() != c_val.lower():
-                    return False, f"Core project field '{field}' was changed from '{o_val}' to '{c_val}'."
+                import re
+                def clean(val):
+                    return re.sub(r'\s+', ' ', str(val)).strip().lower()
+
+                o_val = clean(o_dict.get(field, ''))
+                c_val = clean(c_dict.get(field, ''))
+                if o_val != c_val:
+                    return False, f"Core project field '{field}' was changed from '{o_dict.get(field)}' to '{c_dict.get(field)}'."
 
             # Check technologies list
             o_tech = o_dict.get('technologies', [])
