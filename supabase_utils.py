@@ -441,6 +441,47 @@ def upload_customized_resume_to_storage(file_content: bytes, destination_path: s
         #     logging.warning(f"Could not clean up potentially failed upload at {destination_path}")
         return None
 
+def upload_anschreiben_to_storage(file_content: bytes, destination_path: str) -> Optional[str]:
+    """
+    Uploads a generated Anschreiben PDF to Supabase Storage.
+    Returns the destination path on success, or None on failure.
+    """
+    if not file_content:
+        logging.error("Cannot upload empty Anschreiben content.")
+        return None
+
+    try:
+        logging.info(f"Uploading Anschreiben to Supabase Storage at path: {destination_path}")
+        supabase.storage.from_(config.SUPABASE_STORAGE_BUCKET).upload(
+            path=destination_path,
+            file=file_content,
+            file_options={"content-type": "application/pdf", "upsert": "true"}
+        )
+        logging.info(f"Successfully uploaded Anschreiben to path: {destination_path}")
+        return destination_path
+    except Exception as e:
+        logging.error(f"Error uploading Anschreiben to Supabase Storage: {e}")
+        return None
+
+def update_job_with_anschreiben_link(job_id: str, anschreiben_path: str) -> bool:
+    """
+    Saves the Anschreiben storage path to the jobs table for the given job_id.
+    """
+    try:
+        response = supabase.table(config.SUPABASE_TABLE_NAME)\
+            .update({"anschreiben_path": anschreiben_path})\
+            .eq("job_id", job_id)\
+            .execute()
+
+        if hasattr(response, 'data') and response.data:
+            logging.info(f"Updated anschreiben_path for job_id {job_id}.")
+            return True
+        logging.warning(f"anschreiben_path update returned no data for job_id {job_id}.")
+        return False
+    except Exception as e:
+        logging.error(f"Error updating anschreiben_path for job_id {job_id}: {e}")
+        return False
+
 def update_job_with_resume_link(job_id: str, customized_resume_id: str,  new_status: Optional[str] = "resume_generated") -> bool:
     """
     Updates the job record in the Supabase table with the resume link and optionally a new status.

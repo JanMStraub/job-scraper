@@ -5,7 +5,8 @@ import config # Assuming config holds necessary configurations like a default em
 from pydantic import BaseModel, Field, ValidationError # Import pydantic
 from typing import List, Optional, Dict, Any # Import typing helpers
 import json # Import json for parsing LLM output
-import pdf_generator 
+import pdf_generator
+import anschreiben_generator
 import re
 import asyncio 
 from llm_client import primary_client
@@ -108,6 +109,8 @@ async def personalize_section_with_llm(
     system_prompt = f"""
     You are an expert resume writer and a precise JSON generation assistant.
     Your primary function is to enhance specified sections of a resume to better align with a target job description, based on the provided resume context and original section content.
+
+    **OUTPUT LANGUAGE: Write all generated text in {'German' if config.OUTPUT_LANGUAGE.lower() == 'german' else 'English'}.**
 
     **CRITICAL OUTPUT REQUIREMENTS:**
     1.  You MUST ALWAYS output a single, valid JSON object.
@@ -410,7 +413,7 @@ async def process_job(job_details: Dict[str, Any], base_resume_details: Resume):
         # 2. Generate PDF
         logging.info(f"Generating PDF for job_id: {job_id}")
         try:
-            pdf_bytes = pdf_generator.create_resume_pdf(personalized_resume_data)
+            pdf_bytes = pdf_generator.create_resume_pdf(personalized_resume_data, language=config.OUTPUT_LANGUAGE)
             if not pdf_bytes:
                  raise ValueError("PDF generation returned empty bytes.")
             logging.info(f"PDF generation complete for job_id: {job_id}")
@@ -448,6 +451,37 @@ async def process_job(job_details: Dict[str, Any], base_resume_details: Resume):
             logging.error(f"Failed to update job record for job_id: {job_id}")
 
         logging.info(f"--- Finished processing for job_id: {job_id} ---")
+
+        # --- Anschreiben Generation (optional) ---
+        if config.GENERATE_ANSCHREIBEN:
+            logging.info(f"Generating Anschreiben for job_id: {job_id}")
+            try:
+                anschreiben = await anschreiben_generator.generate_anschreiben(
+                    resume=personalized_resume_data,
+                    job_details=job_details,
+                    language=config.OUTPUT_LANGUAGE
+                )
+                if anschreiben:
+                    anschreiben_pdf_bytes = pdf_generator.create_anschreiben_pdf(
+                        anschreiben=anschreiben,
+                        sender_name=personalized_resume_data.name,
+                        sender_address=personalized_resume_data.location or config.SENDER_ADDRESS,
+                        job_company=job_details.get("company", "Unknown"),
+                        job_title=job_details.get("job_title", "Unknown"),
+                    )
+                    anschreiben_dest = f"anschreiben_{job_id}.pdf"
+                    anschreiben_path = supabase_utils.upload_anschreiben_to_storage(
+                        anschreiben_pdf_bytes, anschreiben_dest
+                    )
+                    if anschreiben_path:
+                        supabase_utils.update_job_with_anschreiben_link(job_id, anschreiben_path)
+                        logging.info(f"Anschreiben uploaded for job_id: {job_id}")
+                    else:
+                        logging.warning(f"Anschreiben upload failed for job_id: {job_id}")
+                else:
+                    logging.warning(f"Anschreiben generation returned None for job_id: {job_id}")
+            except Exception as e:
+                logging.error(f"Anschreiben pipeline error for job_id {job_id}: {e}", exc_info=True)
 
     except Exception as e:
         logging.error(f"An unexpected error occurred while processing job_id {job_id}: {e}", exc_info=True)

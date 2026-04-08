@@ -6,16 +6,31 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from models import Resume 
+from models import Resume, Anschreiben
 import re
 
 logging.basicConfig(level=logging.INFO)
 
-def create_resume_pdf(resume_data: Resume) -> bytes:
+def create_resume_pdf(resume_data: Resume, language: str = "english") -> bytes:
     """
     Generates an ATS-friendly PDF resume with improved design from the provided Resume data object.
     Returns the PDF content as bytes.
+    
+    Args:
+        resume_data: The structured resume object.
+        language:    "german" or "english" — controls section heading labels.
     """
+    # --- Section heading translations ---
+    is_german = language.lower() == "german"
+    headings = {
+        "summary":    "BERUFLICHES PROFIL"    if is_german else "PROFESSIONAL SUMMARY",
+        "skills":     "KENNTNISSE"            if is_german else "SKILLS",
+        "experience": "BERUFSERFAHRUNG"      if is_german else "PROFESSIONAL EXPERIENCE",
+        "education":  "AUSBILDUNG"            if is_german else "EDUCATION",
+        "projects":   "PROJEKTE"              if is_german else "PROJECTS",
+        "certs":      "ZERTIFIZIERUNGEN"      if is_german else "CERTIFICATIONS",
+        "languages":  "SPRACHKENNTNISSE"      if is_german else "LANGUAGES",
+    }
     buffer = io.BytesIO()
     
     # Document setup with slightly wider margins for better readability
@@ -167,7 +182,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     
     # --- Summary ---
     if resume_data.summary and resume_data.summary != "NA":
-        story.append(Paragraph("PROFESSIONAL SUMMARY", style_section_heading))
+        story.append(Paragraph(headings["summary"], style_section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
         
         # Remove leading/trailing double quotes from summary if they exist
@@ -183,7 +198,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
         skills_list = [s for s in resume_data.skills if s != "NA"]
         
         if skills_list:
-            story.append(Paragraph("SKILLS", style_section_heading))
+            story.append(Paragraph(headings["skills"], style_section_heading))
             story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
             
             num_columns = 3  # We'll use a 3-column layout
@@ -225,7 +240,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     
     # --- Experience ---
     if resume_data.experience:
-        story.append(Paragraph("PROFESSIONAL EXPERIENCE", style_section_heading))
+        story.append(Paragraph(headings["experience"], style_section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
         
         for exp in resume_data.experience:
@@ -291,7 +306,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     
     # --- Education ---
     if resume_data.education:
-        story.append(Paragraph("EDUCATION", style_section_heading))
+        story.append(Paragraph(headings["education"], style_section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
         
         for edu in resume_data.education:
@@ -324,7 +339,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     
     # --- Projects ---
     if resume_data.projects:
-        story.append(Paragraph("PROJECTS", style_section_heading))
+        story.append(Paragraph(headings["projects"], style_section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
         
         for proj in resume_data.projects:
@@ -364,7 +379,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     
     # --- Certifications ---
     if resume_data.certifications:
-        story.append(Paragraph("CERTIFICATIONS", style_section_heading))
+        story.append(Paragraph(headings["certs"], style_section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
         
         for cert in resume_data.certifications:
@@ -395,7 +410,7 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
     if resume_data.languages and resume_data.languages != ["NA"]:
         lang_list =[l for l in resume_data.languages if l != "NA"]
         if lang_list:
-            story.append(Paragraph("LANGUAGES", style_section_heading))
+            story.append(Paragraph(headings["languages"], style_section_heading))
             story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#2C3E50'), spaceBefore=0, spaceAfter=8))
             story.append(Paragraph(", ".join(lang_list), style_normal))
     
@@ -406,6 +421,145 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
         logging.error(f"Error building PDF: {e}")
         raise  # Re-raise the exception
     
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+
+def create_anschreiben_pdf(
+    anschreiben: Anschreiben,
+    sender_name: str,
+    sender_address: str,
+    job_company: str,
+    job_title: str,
+) -> bytes:
+    """
+    Generates a professional Anschreiben (cover letter) PDF.
+    Returns the PDF content as bytes.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=1.0*inch,
+        rightMargin=1.0*inch,
+        topMargin=0.8*inch,
+        bottomMargin=0.8*inch,
+    )
+
+    styles = getSampleStyleSheet()
+    primary_color = colors.HexColor('#1976D2')
+    secondary_color = colors.HexColor('#455A64')
+    text_color = colors.HexColor('#212121')
+    light_text = colors.HexColor('#757575')
+
+    style_name = ParagraphStyle(
+        name='AnName',
+        parent=styles['Normal'],
+        fontSize=20,
+        fontName='Helvetica-Bold',
+        textColor=primary_color,
+        spaceAfter=2,
+    )
+    style_address = ParagraphStyle(
+        name='AnAddress',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica',
+        textColor=secondary_color,
+        spaceAfter=2,
+    )
+    style_subject = ParagraphStyle(
+        name='AnSubject',
+        parent=styles['Normal'],
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        textColor=text_color,
+        spaceBefore=12,
+        spaceAfter=12,
+    )
+    style_opening = ParagraphStyle(
+        name='AnOpening',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica',
+        textColor=text_color,
+        spaceAfter=10,
+    )
+    style_body = ParagraphStyle(
+        name='AnBody',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=15,
+        fontName='Helvetica',
+        textColor=text_color,
+        alignment=TA_JUSTIFY,
+        spaceAfter=10,
+    )
+    style_closing = ParagraphStyle(
+        name='AnClosing',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica',
+        textColor=text_color,
+        spaceBefore=16,
+        spaceAfter=40,
+    )
+    style_sig = ParagraphStyle(
+        name='AnSig',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica-Bold',
+        textColor=text_color,
+    )
+    style_company = ParagraphStyle(
+        name='AnCompany',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica',
+        textColor=light_text,
+        spaceBefore=18,
+        spaceAfter=4,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%d.%m.%Y")
+
+    story = []
+
+    # --- Sender block (top-left) ---
+    story.append(Paragraph(sender_name, style_name))
+    for line in sender_address.split(','):
+        story.append(Paragraph(line.strip(), style_address))
+    story.append(Spacer(1, 0.05*inch))
+    story.append(Paragraph(today, style_address))
+    story.append(HRFlowable(width="100%", thickness=1, color=primary_color, spaceAfter=6))
+
+    # --- Recipient block ---
+    story.append(Paragraph(job_company, style_company))
+
+    # --- Subject ---
+    story.append(Paragraph(anschreiben.subject, style_subject))
+
+    # --- Opening salutation ---
+    story.append(Paragraph(anschreiben.opening, style_opening))
+
+    # --- Body paragraphs ---
+    for para in anschreiben.body_paragraphs:
+        story.append(Paragraph(para, style_body))
+
+    # --- Closing ---
+    story.append(Paragraph(anschreiben.closing, style_closing))
+
+    # --- Signature (name typed) ---
+    story.append(Paragraph(sender_name, style_sig))
+
+    try:
+        doc.build(story)
+    except Exception as e:
+        logging.error(f"Error building Anschreiben PDF: {e}")
+        raise
+
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes

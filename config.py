@@ -52,8 +52,15 @@ JOOBLE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Roboti
 WORKWISE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "Data", "IT", "Low Code"]
 
 # Generic Location setting
-GERMANY_LOCATION = "Germany"
+GERMANY_LOCATION = "Heidelberg"
 SEARCH_RADIUS_KM = 30  # Radius in km around GERMANY_LOCATION
+
+# --- Output Settings ---
+OUTPUT_LANGUAGE = "german"      # "german" or "english" — affects resume & Anschreiben text
+GENERATE_ANSCHREIBEN = True     # Whether to generate a cover letter alongside the resume
+
+# Full sender address for the Anschreiben header (street, city, postal code)
+SENDER_ADDRESS = os.environ.get("SENDER_ADDRESS") or "Musterstraße 1, 69117 Heidelberg"
 
 # --- Processing Limits ---
 SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"] # Also available: "linkedin", "careers_future"

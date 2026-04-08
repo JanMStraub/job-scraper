@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from datetime import date
 
 class Education(BaseModel):
     degree: str = ""
@@ -72,6 +73,13 @@ class SingleProjectOutput(BaseModel):
 class ValidationResponse(BaseModel):
     is_valid: bool
     reason: str
+
+class Anschreiben(BaseModel):
+    """Structured cover letter content for PDF generation."""
+    subject: str = Field(description="The subject line of the cover letter")
+    opening: str = Field(description="The salutation line")
+    body_paragraphs: List[str] = Field(description="List of body paragraphs (2-4 paragraphs)")
+    closing: str = Field(description="The closing line before signature")
 
 class Config:
     extra = 'allow'
