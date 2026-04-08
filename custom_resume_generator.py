@@ -55,7 +55,7 @@ async def personalize_section_with_llm(
     job_details: Dict[str, Any]
     ) -> Any:
     """
-    Uses Gemini Flash 2.0 to personalize a specific section of the resume for the given job.
+    Uses the configured LLM to personalize a specific section of the resume for the given job.
     """
     if not section_content or section_content == "NA":
         logging.warning(f"Skipping personalization for empty or 'NA' section: {section_name}")
@@ -218,7 +218,7 @@ async def personalize_section_with_llm(
 
     responses = []
     for prompt in prompts:
-        logging.info(f"Sending prompt to Gemini for section: {section_name} with structured output schema.")
+        logging.info(f"Sending prompt to LLM for section: {section_name}")
 
         # messages = [
         # {'role': 'system', 'content': 'You are an expert resume writer. Only rewrite or generate the specified resume section. Never return the full resume or any unrelated content. Output strictly in the JSON format defined by the provided schema. Do not add any explanatory text before or after the JSON object.'},
@@ -235,9 +235,20 @@ async def personalize_section_with_llm(
             
             logging.info(f"Received response from LLM for section: {section_name}")
 
+            # --- JSON Cleaning for Local Models ---
+            import re
+            raw = llm_output.strip()
+            # Strip markdown fences if present (e.g., ```json ... ```)
+            if raw.startswith("```"):
+                raw = re.sub(r'^```(?:json)?\s*', '', raw)
+                raw = re.sub(r'\s*```$', '', raw)
+            # Fix minor JSON formatting issues sometimes seen in local models
+            raw = re.sub(r'\\"\s*}', '"}', raw)
+            raw = raw.replace('\\\n', '\\n')
+
             try:
                 # Validate and parse the JSON output against the Pydantic model
-                parsed_response_model = OutputModel.model_validate_json(llm_output)
+                parsed_response_model = OutputModel.model_validate_json(raw)
                 # Extract the actual content (e.g., the string for summary, list for skills)
                 responses.append(parsed_response_model)
             except ValidationError as e:
@@ -256,7 +267,7 @@ async def personalize_section_with_llm(
             # Fallback: return original content if LLM call fails
             return section_content
 
-    logging.info(f"Received {len(responses)} responses from Gemini for section: {section_name}")
+    logging.info(f"Received {len(responses)} responses from LLM for section: {section_name}")
 
     if(section_name == "summary"):
         return getattr(responses[0], output_key)
@@ -493,22 +504,41 @@ async def run_job_processing_cycle():
     """
     logging.info("Starting new job processing cycle...")
 
-    # 1. Retrieve Base Resume Details from Supabase (with local file fallback)
+    # 1. Retrieve Base Resume Details (with Supabase/Local merging)
     resume_path = getattr(config, 'BASE_RESUME_PATH', 'resume.json')
     
     # Try fetching resume from Supabase first
-    raw_resume_details = supabase_utils.get_base_resume()
+    supabase_resume_details = supabase_utils.get_base_resume()
     
-    if raw_resume_details:
-        logging.info("Successfully loaded base resume from Supabase database.")
-    elif os.path.exists(resume_path):
-        logging.info(f"Supabase fetch failed. Falling back to local file: {resume_path}")
+    # Load local resume for merging/fallback
+    local_resume_details = {}
+    if os.path.exists(resume_path):
         try:
             with open(resume_path, 'r', encoding='utf-8') as f:
-                raw_resume_details = json.load(f)
+                local_resume_details = json.load(f)
+                logging.debug(f"Loaded local resume details from {resume_path}")
         except Exception as e:
-            logging.error(f"Failed to read or decode {resume_path}: {e}")
-            return
+            logging.error(f"Failed to read local {resume_path}: {e}")
+
+    if supabase_resume_details:
+        logging.info("Successfully loaded base resume from Supabase database. Checking for missing sections...")
+        raw_resume_details = supabase_resume_details
+        
+        # Merge logic: if Supabase field is missing, empty, or "NA", prefer local content
+        for key in ['summary', 'skills', 'experience', 'projects', 'education', 'certifications', 'languages', 'links']:
+            remote_val = raw_resume_details.get(key)
+            local_val = local_resume_details.get(key)
+            
+            # Condition for merging: remote is empty/NA but local has content
+            is_remote_empty = not remote_val or remote_val == "NA" or (isinstance(remote_val, list) and not remote_val)
+            is_local_valid = local_val and local_val != "NA" and (not isinstance(local_val, list) or len(local_val) > 0)
+            
+            if is_remote_empty and is_local_valid:
+                logging.info(f"Merging field '{key}' from local {resume_path} (was empty/NA in Supabase).")
+                raw_resume_details[key] = local_val
+    elif local_resume_details:
+        logging.info(f"Supabase resume not found. Falling back to local file: {resume_path}")
+        raw_resume_details = local_resume_details
     else:
         logging.error(f"Base resume not found in Supabase or at '{resume_path}'. Please run the 'Parse Resume' workflow first.")
         return

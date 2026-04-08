@@ -105,7 +105,7 @@ def format_resume_to_text(resume_data: Dict[str, Any]) -> str:
 
 def get_resume_score_from_ai(resume_text: str, job_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Sends resume and job details to Gemini to get a suitability score.
+    Sends resume and job details to the LLM to get a suitability score.
     Returns a dictionary with 'score' (int) and 'notes' (str), or None if scoring fails.
     """
     if not resume_text or not job_details or not job_details.get('description'):

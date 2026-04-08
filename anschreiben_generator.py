@@ -119,12 +119,16 @@ async def generate_anschreiben(
         logger.error(f"LLM call failed for Anschreiben (job_id={job_id}): {e}")
         return None
 
-    # Strip markdown fences if present
+    # --- JSON Cleaning for Local Models ---
     import re
     raw = raw.strip()
+    # Strip markdown fences if present (e.g., ```json ... ```)
     if raw.startswith("```"):
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
+    # Fix minor JSON formatting issues sometimes seen in local models
+    raw = re.sub(r'\\"\s*}', '"}', raw)
+    raw = raw.replace('\\\n', '\\n')
 
     try:
         anschreiben = Anschreiben.model_validate_json(raw)
