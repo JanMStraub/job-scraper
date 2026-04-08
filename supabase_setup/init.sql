@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS "public"."jobs" (
     "is_interested" boolean,
     "customized_resume_id" "uuid",
     "provider" "text",
-    "posted_at" timestamp with time zone
+    "posted_at" timestamp with time zone,
+    "source_url" "text"
 );
 
 

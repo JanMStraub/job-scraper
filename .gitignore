@@ -2,8 +2,12 @@ __pycache__/
 .env
 .venv
 resume.json
+resume_daria.json
 resume.pdf
 verify_pdf.py
 test_resume.pdf
 .DS_Store
 .sql
+config_daria.py
+csv/
+supabase/snippets/Untitled query 772.sql

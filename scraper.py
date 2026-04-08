@@ -330,6 +330,7 @@ def _fetch_linkedin_job_details(job_id: str) -> dict | None:
 
         # --- Set Provider ---
         job_details["provider"] = "linkedin"
+        job_details["source_url"] = f"https://www.linkedin.com/jobs/view/{job_id}/"
         
         return job_details
 
@@ -574,6 +575,7 @@ def _fetch_careers_future_job_details(job_id: str) -> dict | None:
             'provider': 'careers_future',
             'description': markdown_description, 
             'posted_at': job_data.get('metadata', {}).get('createdAt', ''),
+            'source_url': f"https://www.mycareersfuture.gov.sg/job/{job_id}",
         }
 
         return job_details
@@ -743,7 +745,7 @@ if __name__ == "__main__":
         logging.info("\n--- Skipping Careers Future Job Scraping per config ---")
 
     # --- Playwright Scrapers ---
-    playwright_sources = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"]
+    playwright_sources = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise", "museumsbund"]
     active_playwright_sources = [s for s in config.SCRAPING_SOURCES if s in playwright_sources]
 
     if active_playwright_sources:
@@ -828,6 +830,19 @@ if __name__ == "__main__":
                     if new_workwise_jobs:
                         supabase_utils.save_jobs_to_supabase(new_workwise_jobs)
                         total_new_jobs_saved += len(new_workwise_jobs)
+
+            # Get jobs from Museumsbund
+            if "museumsbund" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Museumsbund Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("museumsbund", 10)
+                for query in config.MUSEUMSBUND_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Museumsbund Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_museumsbund_jobs = playwright_scrapers.process_museumsbund_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_museumsbund_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_museumsbund_jobs)
+                        total_new_jobs_saved += len(new_museumsbund_jobs)
 
             browser.close()
 

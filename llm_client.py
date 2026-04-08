@@ -21,7 +21,9 @@ import random
 import logging
 import threading
 import asyncio
+import re
 from typing import Optional, Any, Type
+import json
 
 import litellm
 from pydantic import BaseModel
@@ -191,6 +193,16 @@ class LLMClient:
                     f"Increase LLM_DAILY_REQUEST_BUDGET or wait for reset."
                 )
 
+    def _clean_json_response(self, content: str) -> str:
+        """Strip markdown code blocks and whitespace from a JSON string."""
+        content = content.strip()
+        if content.startswith("```"):
+            # Remove ```json or ``` from the start
+            content = re.sub(r'^```(?:json)?\s*', '', content)
+            # Remove ``` from the end
+            content = re.sub(r'\s*```$', '', content)
+        return content.strip()
+
     def generate_content(
         self,
         prompt: str,
@@ -235,12 +247,29 @@ class LLMClient:
         if self.api_key:
             base_kwargs["api_key"] = self.api_key
 
-        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE and model.startswith("openai/"):
+        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE:
             base_kwargs["api_base"] = config.LLM_API_BASE
+            # If using a local API base but no provider prefix, LiteLLM requires 'openai/' for LM Studio/Ollama
+            if "/" not in model:
+                model = f"openai/{model}"
+            elif not any(model.startswith(p + "/") for p in ["openai", "anthropic", "gemini", "google", "groq", "ollama", "vertex_ai", "azure", "deepseek", "mistral"]):
+                # Unknown prefix with a custom API base usually implies OpenAI-compatible local server
+                model = f"openai/{model}"
 
         # Add structured output (Pydantic model)
         if response_format is not None:
-            base_kwargs["response_format"] = response_format
+            if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE:
+                # Local models: manually inject schema into prompt for better reliability
+                schema_str = json.dumps(response_format.model_json_schema(), indent=2)
+                json_instruction = (
+                    f"\n\nACTUAL TASK: Extract information from the provided text and "
+                    f"FILL OUT a JSON object following this EXACT structure. "
+                    f"Return ONLY the resulting JSON object populated with data. "
+                    f"Do not return the schema itself, and do not include explanation:\n{schema_str}"
+                )
+                messages[-1]["content"] += json_instruction
+            else:
+                base_kwargs["response_format"] = response_format
 
         last_exception = None
 
@@ -275,9 +304,11 @@ class LLMClient:
                 # Track daily usage
                 self._daily_count += 1
 
-                # Extract text from response
+                # Extract and clean content
                 content = response.choices[0].message.content
                 if content:
+                    if response_format is not None:
+                        content = self._clean_json_response(content)
                     return content.strip()
                 else:
                     logger.warning("LLM returned empty content")
@@ -349,11 +380,25 @@ class LLMClient:
         if self.api_key:
             base_kwargs["api_key"] = self.api_key
 
-        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE and model.startswith("openai/"):
+        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE:
             base_kwargs["api_base"] = config.LLM_API_BASE
+            if "/" not in model:
+                model = f"openai/{model}"
+            elif not any(model.startswith(p + "/") for p in ["openai", "anthropic", "gemini", "google", "groq", "ollama", "vertex_ai", "azure", "deepseek", "mistral"]):
+                model = f"openai/{model}"
 
         if response_format is not None:
-            base_kwargs["response_format"] = response_format
+            if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE:
+                schema_str = json.dumps(response_format.model_json_schema(), indent=2)
+                json_instruction = (
+                    f"\n\nACTUAL TASK: Extract information from the provided text and "
+                    f"FILL OUT a JSON object following this EXACT structure. "
+                    f"Return ONLY the resulting JSON object populated with data. "
+                    f"Do not return the schema itself, and do not include explanation:\n{schema_str}"
+                )
+                messages[-1]["content"] += json_instruction
+            else:
+                base_kwargs["response_format"] = response_format
 
         last_exception = None
 
@@ -387,6 +432,8 @@ class LLMClient:
 
                 content = response.choices[0].message.content
                 if content:
+                    if response_format is not None:
+                        content = self._clean_json_response(content)
                     return content.strip()
                 else:
                     logger.warning("LLM returned empty content")

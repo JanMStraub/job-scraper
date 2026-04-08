@@ -94,7 +94,8 @@ def process_arbeitsagentur_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "arbeitsagentur",
                     "description": convert_html_to_markdown(desc_html),
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": lnk["url"]
                 })
             except Exception as e:
                 logger.error(f"Error parsing Arbeitsagentur job {lnk['job_id']}: {e}")
@@ -159,7 +160,8 @@ def process_indeed_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "indeed",
                     "description": convert_html_to_markdown(desc_html),
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": detail_url
                 })
             except Exception as e:
                 logger.error(f"Error parsing Indeed job {jid}: {e}")
@@ -241,7 +243,8 @@ def process_stepstone_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "stepstone",
                     "description": convert_html_to_markdown(desc_html)[:5000],
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": lnk["url"]
                 })
             except Exception as e:
                 logger.error(f"Error parsing StepStone job {lnk['job_id']}: {e}")
@@ -297,7 +300,8 @@ def process_meinestadt_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "meinestadt",
                     "description": convert_html_to_markdown(desc_html)[:5000],
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": lnk["url"]
                 })
             except Exception as e:
                 logger.error(f"Error parsing Meinestadt job {lnk['job_id']}: {e}")
@@ -351,7 +355,8 @@ def process_jooble_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "jooble",
                     "description": convert_html_to_markdown(desc_html)[:5000],
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": detail_url
                 })
             except Exception as e:
                 logger.error(f"Error parsing Jooble job {jid}: {e}")
@@ -408,11 +413,97 @@ def process_workwise_query(page, query: str, limit: int = 5) -> list:
                     "level": _determine_job_level(title),
                     "provider": "workwise",
                     "description": convert_html_to_markdown(desc_html)[:5000],
-                    "posted_at": None
+                    "posted_at": None,
+                    "source_url": lnk["url"]
                 })
             except Exception as e:
                 logger.error(f"Error parsing Workwise job {lnk['job_id']}: {e}")
     except Exception as e:
         logger.error(f"Error hitting Workwise: {e}")
+            
+    return jobs
+
+# --- MUSEUMSBUND ---
+def process_museumsbund_query(page, query: str, limit: int = 5) -> list:
+    logger.info(f"--- Starting Museumsbund Scraping for '{query}' ---")
+    jobs = []
+    
+    try:
+        url = "https://www.museumsbund.de/stellenangebote/"
+        page.goto(url, wait_until="networkidle", timeout=40000)
+        _human_delay(2, 4)
+        
+        # Accept cookies if banner exists
+        try:
+            # Based on common patterns or subagent findings
+            page.click("button:has-text('Alle akzeptieren'), .cmplz-accept", timeout=3000)
+            _human_delay(1, 2)
+        except:
+            pass
+
+        # Use the search bar
+        try:
+            page.fill("input.facetwp-search", query)
+            page.keyboard.press("Enter")
+            # Wait for results to update (FacetWP usually uses AJAX)
+            page.wait_for_selector("div.facetwp-template", timeout=10000)
+            _human_delay(2, 4)
+        except Exception as e:
+            logger.warning(f"Could not use search bar on Museumsbund: {e}")
+
+        # Extract links
+        # From subagent: article.teaser--stellenangebot and a.teaser__headline-link
+        cards = page.locator("article.teaser--stellenangebot a.teaser__headline-link").all()
+        links = []
+        for c in cards:
+            href = c.get_attribute("href")
+            if href:
+                full_url = href if href.startswith('http') else f"https://www.museumsbund.de{href}"
+                # The href usually contains a slug that can serve as an ID
+                job_id = href.strip('/').split('/')[-1]
+                links.append({"job_id": f"museumsbund_{job_id}", "url": full_url})
+        
+        links = links[:limit]
+        
+        existing_ids = supabase_utils.filter_existing_job_ids([l["job_id"] for l in links])
+        new_links = [l for l in links if l["job_id"] not in existing_ids]
+        
+        for lnk in new_links:
+            try:
+                page.goto(lnk["url"], wait_until="domcontentloaded")
+                _human_delay(1, 3)
+                
+                html = page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # From subagent: h1.content__headline, p.content__organisation, p.content__location, div.content__body
+                title_elem = soup.select_one("h1.content__headline")
+                title = title_elem.text.strip() if title_elem else "Unknown Title"
+                
+                company_elem = soup.select_one("p.content__organisation")
+                company = company_elem.text.strip() if company_elem else "Unknown Organization"
+                
+                location_elem = soup.select_one("p.content__location")
+                location = location_elem.text.strip() if location_elem else "Germany"
+                
+                desc_elem = soup.select_one("div.content__body")
+                desc_html = str(desc_elem) if desc_elem else html
+                
+                jobs.append({
+                    "job_id": lnk["job_id"],
+                    "company": company,
+                    "job_title": title,
+                    "location": location,
+                    "level": _determine_job_level(title),
+                    "provider": "museumsbund",
+                    "description": convert_html_to_markdown(desc_html),
+                    "posted_at": None,
+                    "source_url": lnk["url"]
+                })
+            except Exception as e:
+                logger.error(f"Error parsing Museumsbund job {lnk['job_id']}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error hitting Museumsbund: {e}")
             
     return jobs
