@@ -43,17 +43,19 @@ CAREERS_FUTURE_SEARCH_CATEGORIES = ["Information Technology"]
 CAREERS_FUTURE_SEARCH_EMPLOYMENT_TYPES = ["Full Time"]
 
 # --- New Portals Configuration ---
-ARBEITSAGENTUR_SEARCH_QUERIES = ["Softwareentwickler", "Softwareentwickler Python", "Machine Learning Ingenieur", "Robotics Engineer", "Oracle APEX Entwickler", "Low Code"]
-INDEED_SEARCH_QUERIES = ["Softwareentwickler", "Python Developer", "Machine Learning Engineer", "Robotics Engineer", "Software Architect", "Computer Vision", "Low Code"]
-STEPSTONE_SEARCH_QUERIES = ["Softwareentwickler", "Python Softwareentwickler", "Data Scientist", "Machine Learning", "Oracle APEX", "Low Code"]
-MEINESTADT_SEARCH_QUERIES = ["Softwareentwickler", "Python", "IT Projektleiter", "Low Code"]
-JOOBLE_SEARCH_QUERIES = ["Softwareentwickler", "Python Developer", "Robotics", "Machine Learning", "Autonomous Systems", "Low Code"]
+ARBEITSAGENTUR_SEARCH_QUERIES = ["KI","Softwareentwickler", "Softwareentwickler Python", "Machine Learning Ingenieur", "Robotics Engineer", "Oracle APEX Entwickler", "Low Code"]
+INDEED_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Machine Learning Engineer", "Robotics Engineer", "Software Architect", "Computer Vision", "Low Code"]
+STEPSTONE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Softwareentwickler", "Data Scientist", "Machine Learning", "Oracle APEX", "Low Code"]
+MEINESTADT_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "IT Projektleiter", "Low Code"]
+JOOBLE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Robotics", "Machine Learning", "Autonomous Systems", "Low Code"]
+
+WORKWISE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "Data", "IT", "Low Code"]
 
 # Generic Location setting
 GERMANY_LOCATION = "Deutschland"
 
 # --- Processing Limits ---
-SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble"] # Also available: "linkedin", "careers_future"
+SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"] # Also available: "linkedin", "careers_future"
 JOBS_TO_SCORE_PER_RUN = 100
 JOBS_TO_CUSTOMIZE_PER_RUN = 10
 MAX_JOBS_PER_SEARCH = {
@@ -64,6 +66,7 @@ MAX_JOBS_PER_SEARCH = {
     "stepstone": 5,
     "meinestadt": 5,
     "jooble": 5,
+    "workwise": 5,
 }
 
 # =================================================================

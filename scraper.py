@@ -10,7 +10,7 @@ import supabase_utils
 from markdownify import markdownify as md
 import json
 import playwright_scrapers
-
+from playwright.sync_api import sync_playwright
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -742,60 +742,94 @@ if __name__ == "__main__":
     else:
         logging.info("\n--- Skipping Careers Future Job Scraping per config ---")
 
-    # Get jobs from Arbeitsagentur
-    if "arbeitsagentur" in config.SCRAPING_SOURCES:
-        logging.info(f"\n--- Starting Arbeitsagentur Job Scraping ---")
-        max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("arbeitsagentur", 5)
-        for query in config.ARBEITSAGENTUR_SEARCH_QUERIES:
-            logging.info(f"\n{'='*20} Processing Arbeitsagentur Search Query: '{query}' {'='*20}")
-            new_arbeitsagentur_jobs = playwright_scrapers.process_arbeitsagentur_query(query, limit=max_jobs_per_search)
-            if new_arbeitsagentur_jobs:
-                supabase_utils.save_jobs_to_supabase(new_arbeitsagentur_jobs)
-                total_new_jobs_saved += len(new_arbeitsagentur_jobs)
+    # --- Playwright Scrapers ---
+    playwright_sources = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"]
+    active_playwright_sources = [s for s in config.SCRAPING_SOURCES if s in playwright_sources]
 
-    # Get jobs from Indeed
-    if "indeed" in config.SCRAPING_SOURCES:
-        logging.info(f"\n--- Starting Indeed Job Scraping ---")
-        max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("indeed", 5)
-        for query in config.INDEED_SEARCH_QUERIES:
-            logging.info(f"\n{'='*20} Processing Indeed Search Query: '{query}' {'='*20}")
-            new_indeed_jobs = playwright_scrapers.process_indeed_query(query, limit=max_jobs_per_search)
-            if new_indeed_jobs:
-                supabase_utils.save_jobs_to_supabase(new_indeed_jobs)
-                total_new_jobs_saved += len(new_indeed_jobs)
+    if active_playwright_sources:
+        logging.info("\n--- Initializing Playwright Browser Environment ---")
+        with sync_playwright() as p:
+            browser, context = playwright_scrapers.setup_browser(p)
 
-    # Get jobs from StepStone
-    if "stepstone" in config.SCRAPING_SOURCES:
-        logging.info(f"\n--- Starting StepStone Job Scraping ---")
-        max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("stepstone", 5)
-        for query in config.STEPSTONE_SEARCH_QUERIES:
-            logging.info(f"\n{'='*20} Processing StepStone Search Query: '{query}' {'='*20}")
-            new_stepstone_jobs = playwright_scrapers.process_stepstone_query(query, limit=max_jobs_per_search)
-            if new_stepstone_jobs:
-                supabase_utils.save_jobs_to_supabase(new_stepstone_jobs)
-                total_new_jobs_saved += len(new_stepstone_jobs)
+            # Get jobs from Arbeitsagentur
+            if "arbeitsagentur" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Arbeitsagentur Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("arbeitsagentur", 5)
+                for query in config.ARBEITSAGENTUR_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Arbeitsagentur Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_arbeitsagentur_jobs = playwright_scrapers.process_arbeitsagentur_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_arbeitsagentur_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_arbeitsagentur_jobs)
+                        total_new_jobs_saved += len(new_arbeitsagentur_jobs)
 
-    # Get jobs from Meinestadt
-    if "meinestadt" in config.SCRAPING_SOURCES:
-        logging.info(f"\n--- Starting Meinestadt Job Scraping ---")
-        max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("meinestadt", 5)
-        for query in config.MEINESTADT_SEARCH_QUERIES:
-            logging.info(f"\n{'='*20} Processing Meinestadt Search Query: '{query}' {'='*20}")
-            new_meinestadt_jobs = playwright_scrapers.process_meinestadt_query(query, limit=max_jobs_per_search)
-            if new_meinestadt_jobs:
-                supabase_utils.save_jobs_to_supabase(new_meinestadt_jobs)
-                total_new_jobs_saved += len(new_meinestadt_jobs)
+            # Get jobs from Indeed
+            if "indeed" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Indeed Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("indeed", 5)
+                for query in config.INDEED_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Indeed Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_indeed_jobs = playwright_scrapers.process_indeed_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_indeed_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_indeed_jobs)
+                        total_new_jobs_saved += len(new_indeed_jobs)
 
-    # Get jobs from Jooble
-    if "jooble" in config.SCRAPING_SOURCES:
-        logging.info(f"\n--- Starting Jooble Job Scraping ---")
-        max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("jooble", 5)
-        for query in config.JOOBLE_SEARCH_QUERIES:
-            logging.info(f"\n{'='*20} Processing Jooble Search Query: '{query}' {'='*20}")
-            new_jooble_jobs = playwright_scrapers.process_jooble_query(query, limit=max_jobs_per_search)
-            if new_jooble_jobs:
-                supabase_utils.save_jobs_to_supabase(new_jooble_jobs)
-                total_new_jobs_saved += len(new_jooble_jobs)
+            # Get jobs from StepStone
+            if "stepstone" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting StepStone Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("stepstone", 5)
+                for query in config.STEPSTONE_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing StepStone Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_stepstone_jobs = playwright_scrapers.process_stepstone_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_stepstone_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_stepstone_jobs)
+                        total_new_jobs_saved += len(new_stepstone_jobs)
+
+            # Get jobs from Meinestadt
+            if "meinestadt" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Meinestadt Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("meinestadt", 5)
+                for query in config.MEINESTADT_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Meinestadt Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_meinestadt_jobs = playwright_scrapers.process_meinestadt_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_meinestadt_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_meinestadt_jobs)
+                        total_new_jobs_saved += len(new_meinestadt_jobs)
+
+            # Get jobs from Jooble
+            if "jooble" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Jooble Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("jooble", 5)
+                for query in config.JOOBLE_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Jooble Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_jooble_jobs = playwright_scrapers.process_jooble_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_jooble_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_jooble_jobs)
+                        total_new_jobs_saved += len(new_jooble_jobs)
+
+            # Get jobs from Workwise
+            if "workwise" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Workwise Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("workwise", 5)
+                for query in config.WORKWISE_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Workwise Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    new_workwise_jobs = playwright_scrapers.process_workwise_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_workwise_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_workwise_jobs)
+                        total_new_jobs_saved += len(new_workwise_jobs)
+
+            browser.close()
 
     # --- End of Script ---      
     logging.info(f"\n{'='*20} Job scraping script finished {'='*20}")

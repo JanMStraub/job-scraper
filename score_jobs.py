@@ -2,6 +2,7 @@ import time
 import json
 import logging
 from typing import List, Optional, Dict, Any
+import re
 import requests
 import io
 import pdfplumber
@@ -10,6 +11,7 @@ import os
 import config
 import supabase_utils
 from llm_client import primary_client
+from models import JobScoreOutput
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -101,10 +103,10 @@ def format_resume_to_text(resume_data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def get_resume_score_from_ai(resume_text: str, job_details: Dict[str, Any]) -> Optional[int]:
+def get_resume_score_from_ai(resume_text: str, job_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Sends resume and job details to Gemini to get a suitability score.
-    Returns the score as an integer (0-100) or None if scoring fails.
+    Returns a dictionary with 'score' (int) and 'notes' (str), or None if scoring fails.
     """
     if not resume_text or not job_details or not job_details.get('description'):
         logging.warning(f"Missing resume text or job description for job_id {job_details.get('job_id')}. Skipping scoring.")
@@ -119,8 +121,12 @@ def get_resume_score_from_ai(resume_text: str, job_details: Dict[str, Any]) -> O
 
     prompt = f"""
     You are a scoring assistant. You will be given a resume and a job description.  
-    Based **only** on the information provided, **return exactly one integer between 0 and 100** (inclusive) that represents the candidate’s suitability for the role.  
-    Do **not** return any words, punctuation, or explanation—only the integer.
+    Based **only** on the information provided, analyze the candidate's suitability for the role.
+    
+    You must return a structured output containing:
+    1. "thinking": Your internal step-by-step reasoning. Compare the candidate's skills, experience, and background against the job requirements. Identify what matches and what is missing. Then decide on a fair score.
+    2. "score": An integer strictly between 0 and 100 representing the candidate's suitability.
+    3. "reason": A highly concise summary of the score using short bullet points (e.g., "- Matches Python & AWS\n- Missing CI/CD"). Keep it under 3 bullets.
 
     --- RESUME ---
     {resume_text}
@@ -133,27 +139,54 @@ def get_resume_score_from_ai(resume_text: str, job_details: Dict[str, Any]) -> O
 
     {job_description}
     --- END JOB DESCRIPTION ---
-
-    Score (0–100):
     """
 
     try:
-        logging.info(f"Requesting score for job_id: {job_details.get('job_id')}")
-        score_text = primary_client.generate_content(
+        logging.info(f"Requesting structure score for job_id: {job_details.get('job_id')}")
+        llm_output = primary_client.generate_content(
             prompt=prompt,
+            response_format=JobScoreOutput
         )
 
-        # Attempt to parse the score
-        score = int(score_text.strip())
-        if 0 <= score <= 100:
-            logging.info(f"Received score {score} for job_id: {job_details.get('job_id')}")
-            return score
-        else:
-            logging.warning(f"Received score out of range ({score}) for job_id: {job_details.get('job_id')}. Raw response: '{score_text}'")
+        # --- JSON repair for local models ---
+        raw = llm_output.strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw)
+        # Fix trailing escaped quotes before closing brace
+        raw = re.sub(r'\\"\s*}', '"}', raw)
+        # Fix unescaped newlines inside strings
+        raw = raw.replace('\\\n', '\\n')
+        # Ensure closing brace
+        if '{' in raw and '}' not in raw:
+            raw += '}'
+
+        try:
+            parsed_score = JobScoreOutput.model_validate_json(raw)
+            score = parsed_score.score
+            reason = parsed_score.reason
+            
+            if 0 <= score <= 100:
+                logging.info(f"Received score {score} for job_id: {job_details.get('job_id')}")
+                return {"score": score, "notes": reason}
+            else:
+                logging.warning(f"Received score out of range ({score}) for job_id: {job_details.get('job_id')}.")
+                return None
+        except Exception as e:
+            # Fallback: try regex extraction
+            logging.warning(f"JSON parse failed for job_id {job_details.get('job_id')}, attempting regex fallback: {e}")
+            score_match = re.search(r'"score"\s*:\s*(\d+)', raw)
+            reason_match = re.search(r'"reason"\s*:\s*"([^"]*)', raw)
+            if score_match:
+                score = int(score_match.group(1))
+                reason = reason_match.group(1) if reason_match else "No reason provided"
+                if 0 <= score <= 100:
+                    logging.info(f"Regex fallback: score {score} for job_id: {job_details.get('job_id')}")
+                    return {"score": score, "notes": reason}
+            logging.error(f"All parsing failed for job_id {job_details.get('job_id')}. Raw: {raw[:200]}")
             return None
-    except ValueError:
-        logging.error(f"Could not parse integer score from LLM response for job_id: {job_details.get('job_id')}. Raw response: '{score_text}'")
-        return None
+            
     except Exception as e:
         logging.error(f"Error calling LLM API for job_id {job_details.get('job_id')}: {e}")
         return None
@@ -250,10 +283,10 @@ def rescore_jobs_with_custom_resume():
             continue
         
         logging.debug(f"Custom resume text for job {job_id} (first 200 chars): {custom_resume_text[:200]}")
-        score = get_resume_score_from_ai(custom_resume_text, job)
+        score_result = get_resume_score_from_ai(custom_resume_text, job)
 
-        if score is not None:
-            if supabase_utils.update_job_score(job_id, score, resume_score_stage="custom"):
+        if score_result is not None:
+            if supabase_utils.update_job_score(job_id, score_result["score"], resume_score_stage="custom", notes=score_result["notes"]):
                 successful_rescores += 1
             else:
                 failed_rescores += 1 
@@ -322,10 +355,10 @@ def main():
                     continue
 
                 logging.info(f"--- Initial Scoring Job {i+1}/{len(jobs_to_score_initially)} (ID: {job_id}) ---")
-                score = get_resume_score_from_ai(default_resume_text, job)
+                score_result = get_resume_score_from_ai(default_resume_text, job)
 
-                if score is not None:
-                    if supabase_utils.update_job_score(job_id, score, resume_score_stage="initial"):
+                if score_result is not None:
+                    if supabase_utils.update_job_score(job_id, score_result["score"], resume_score_stage="initial", notes=score_result["notes"]):
                         successful_initial_scores += 1
                     else:
                         failed_initial_scores += 1

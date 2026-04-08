@@ -58,6 +58,11 @@ class ExperienceListOutput(BaseModel):
 class SingleExperienceOutput(BaseModel):
     experience: Experience
 
+class JobScoreOutput(BaseModel):
+    thinking: str = Field(default="", description="Your internal step-by-step reasoning. Analyze the resume skills vs job requirements, identify matches and gaps, then decide on a score.")
+    score: int = Field(ge=0, le=100, description="A score between 0 and 100")
+    reason: str = Field(description="A highly concise explanation using short bullet points (max 3)")
+
 class ProjectListOutput(BaseModel):
     projects: List[Project]
 

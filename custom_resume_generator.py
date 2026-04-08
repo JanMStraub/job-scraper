@@ -223,7 +223,7 @@ async def personalize_section_with_llm(
         # ]
 
         try:
-            llm_output = primary_client.generate_content(
+            llm_output = await primary_client.agenerate_content(
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=1,
@@ -507,9 +507,9 @@ async def run_job_processing_cycle():
 
     logging.info(f"Found {len(jobs_to_process)} jobs to process.")
 
-    # 3. Process Each Job Sequentially (to avoid overwhelming Gemini/resources)
-    for job_details in jobs_to_process:
-        await process_job(job_details, base_resume_details) # Pass base resume
+    # 3. Process All Jobs Concurrently
+    tasks = [process_job(job_details, base_resume_details) for job_details in jobs_to_process]
+    await asyncio.gather(*tasks)
 
     logging.info("Finished job processing cycle.")
 

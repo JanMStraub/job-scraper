@@ -20,6 +20,7 @@ import time
 import random
 import logging
 import threading
+import asyncio
 from typing import Optional, Any, Type
 
 import litellm
@@ -33,6 +34,34 @@ logger = logging.getLogger(__name__)
 litellm.suppress_debug_info = True
 if os.environ.get("LLM_DEBUG", "").lower() == "true":
     litellm.set_verbose = True
+
+
+class AsyncRateLimiter:
+    """Async token-bucket rate limiter for requests per minute."""
+
+    def __init__(self, max_rpm: int):
+        self.max_rpm = max_rpm
+        self.tokens = max_rpm
+        self.last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Block until a request token is available asynchronously."""
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self.last_refill
+                # Refill tokens based on elapsed time
+                refill = elapsed * (self.max_rpm / 60.0)
+                self.tokens = min(self.max_rpm, self.tokens + refill)
+                self.last_refill = now
+
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return
+
+            # Wait a bit before retrying
+            await asyncio.sleep(0.5)
 
 
 class RateLimiter:
@@ -100,10 +129,13 @@ class LLMClient:
         self.daily_budget = daily_budget
         self.request_delay = request_delay
         self.rate_limiter = RateLimiter(max_rpm)
+        self.async_rate_limiter = AsyncRateLimiter(max_rpm)
 
         # Daily budget tracking
         self._daily_count = 0
         self._daily_reset_time = time.time()
+        self._daily_lock = threading.Lock()
+        self._async_daily_lock = asyncio.Lock()
 
         # Set API key in environment if provided (LiteLLM reads from env)
         if api_key:
@@ -142,6 +174,22 @@ class LLMClient:
                 f"Daily LLM request budget exceeded ({self.daily_budget} requests). "
                 f"Increase LLM_DAILY_REQUEST_BUDGET or wait for reset."
             )
+
+    async def _async_check_daily_budget(self):
+        """Check if daily request budget is exceeded. Resets at midnight."""
+        if self.daily_budget <= 0:
+            return  # Unlimited
+
+        async with self._async_daily_lock:
+            if time.time() - self._daily_reset_time > 86400:
+                self._daily_count = 0
+                self._daily_reset_time = time.time()
+
+            if self._daily_count >= self.daily_budget:
+                raise RuntimeError(
+                    f"Daily LLM request budget exceeded ({self.daily_budget} requests). "
+                    f"Increase LLM_DAILY_REQUEST_BUDGET or wait for reset."
+                )
 
     def generate_content(
         self,
@@ -272,6 +320,110 @@ class LLMClient:
         logger.error(f"All {max_attempts} attempts failed for model {failed_model}")
         raise last_exception
 
+
+    async def agenerate_content(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 1,
+        response_format: Optional[Type[BaseModel]] = None,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """
+        Asynchronously generate content using the configured LLM.
+        """
+        await self._async_check_daily_budget()
+
+        model = model_override or self.model
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        base_kwargs = {
+            "messages": messages,
+            "temperature": temperature,
+        }
+
+        if self.api_key:
+            base_kwargs["api_key"] = self.api_key
+
+        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE and model.startswith("openai/"):
+            base_kwargs["api_base"] = config.LLM_API_BASE
+
+        if response_format is not None:
+            base_kwargs["response_format"] = response_format
+
+        last_exception = None
+
+        is_dynamic_gemini = model.lower() in ("gemini", "google")
+        gemini_pool = [
+            "gemini/gemini-3.1-flash-lite-preview",
+            "gemini/gemini-3-flash-preview",
+            "gemini/gemini-2.5-flash",
+            "gemini/gemini-2.5-flash-lite",
+        ]
+        pool_index = 0
+        
+        max_attempts = max(self.max_retries + 1, len(gemini_pool)) if is_dynamic_gemini else self.max_retries + 1
+
+        for attempt in range(max_attempts):
+            try:
+                await self.async_rate_limiter.acquire()
+
+                if self.request_delay > 0 and attempt == 0:
+                    await asyncio.sleep(self.request_delay)
+                    
+                current_model = gemini_pool[pool_index % len(gemini_pool)] if is_dynamic_gemini else model
+                kwargs = base_kwargs.copy()
+                kwargs["model"] = current_model
+
+                logger.debug(f"LLM request attempt {attempt + 1}/{max_attempts} to {current_model} (Async)")
+                response = await litellm.acompletion(**kwargs)
+
+                async with self._async_daily_lock:
+                    self._daily_count += 1
+
+                content = response.choices[0].message.content
+                if content:
+                    return content.strip()
+                else:
+                    logger.warning("LLM returned empty content")
+                    return ""
+
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+
+                is_rate_limit = any(keyword in error_str for keyword in [
+                    "429", "rate_limit", "rate limit", "resource_exhausted",
+                    "quota", "too many requests", "retry"
+                ])
+
+                if is_rate_limit and attempt < max_attempts - 1:
+                    if is_dynamic_gemini:
+                        pool_index += 1
+                        delay = random.uniform(1, 4)
+                        logger.warning(
+                            f"Rate limit hit for {current_model}. Switching to next pool model... "
+                            f"(attempt {attempt + 1}/{max_attempts}). Retrying in {delay:.1f}s. Error: {e}"
+                        )
+                    else:
+                        delay = self.retry_base_delay * (2 ** attempt) + random.uniform(0, 5)
+                        logger.warning(
+                            f"Rate limit hit (attempt {attempt + 1}/{max_attempts}). "
+                            f"Retrying in {delay:.1f}s... Error: {e}"
+                        )
+                    await asyncio.sleep(delay)
+                    continue
+                elif not is_rate_limit:
+                    logger.error(f"LLM API error (non-retryable) on model {current_model if 'current_model' in locals() else model}: {e}")
+                    raise
+
+        failed_model = current_model if 'current_model' in locals() else model
+        logger.error(f"All {max_attempts} attempts failed for model {failed_model}")
+        raise last_exception
 
 def _create_client(
     model: str,

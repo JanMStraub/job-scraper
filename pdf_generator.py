@@ -7,6 +7,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from models import Resume 
+import re
 
 logging.basicConfig(level=logging.INFO)
 
@@ -274,39 +275,12 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
                     # Split a paragraph into sentences and make each sentence a bullet point
                     text = exp.description.strip()
                     
-                    text = text.replace("e.g.", "TEMP_EG")
-                    text = text.replace("i.e.", "TEMP_IE")
-                    text = text.replace("etc.", "TEMP_ETC")
-                    text = text.replace("vs.", "TEMP_VS")
-                    text = text.replace("Mr.", "TEMP_MR")
-                    text = text.replace("Mrs.", "TEMP_MRS")
-                    text = text.replace("Ms.", "TEMP_MS")
-                    text = text.replace("Dr.", "TEMP_DR")
-                    text = text.replace("St.", "TEMP_ST")
-                    text = text.replace("Ph.D.", "TEMP_PHD")
-                    text = text.replace("U.S.", "TEMP_US")
-                    text = text.replace("U.K.", "TEMP_UK")
-                    
-                    # Split by periods
-                    sentences = text.split('. ')
+                    # Split by periods, avoiding common abbreviations
+                    sentences = [s.strip() for s in re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text) if s.strip()]
                     
                     # Process each sentence
                     for i, sentence in enumerate(sentences):
                         if sentence:
-                            # Restore abbreviations
-                            sentence = sentence.replace("TEMP_EG", "e.g.")
-                            sentence = sentence.replace("TEMP_IE", "i.e.")
-                            sentence = sentence.replace("TEMP_ETC", "etc.")
-                            sentence = sentence.replace("TEMP_VS", "vs.")
-                            sentence = sentence.replace("TEMP_MR", "Mr.")
-                            sentence = sentence.replace("TEMP_MRS", "Mrs.")
-                            sentence = sentence.replace("TEMP_MS", "Ms.")
-                            sentence = sentence.replace("TEMP_DR", "Dr.")
-                            sentence = sentence.replace("TEMP_ST", "St.")
-                            sentence = sentence.replace("TEMP_PHD", "Ph.D.")
-                            sentence = sentence.replace("TEMP_US", "U.S.")
-                            sentence = sentence.replace("TEMP_UK", "U.K.")
-                            
                             # Add period back if it's not the last sentence or if the last sentence doesn't end with punctuation
                             if i < len(sentences) - 1 or not sentence[-1] in ['.', '!', '?']:
                                 sentence = sentence + '.'
@@ -369,62 +343,15 @@ def create_resume_pdf(resume_data: Resume) -> bytes:
                                 bullet_text = f"• {bullet_text[1:].strip()}"
                             story.append(Paragraph(bullet_text, style_bullet))
                 else:
+                    # Split a paragraph into sentences and make each sentence a bullet point
                     text = proj.description.strip()
                     
-                    text = text.replace("e.g.", "TEMP_EG")
-                    text = text.replace("i.e.", "TEMP_IE")
-                    text = text.replace("etc.", "TEMP_ETC")
-                    text = text.replace("vs.", "TEMP_VS")
-                    text = text.replace("Mr.", "TEMP_MR")
-                    text = text.replace("Mrs.", "TEMP_MRS")
-                    text = text.replace("Ms.", "TEMP_MS")
-                    text = text.replace("Dr.", "TEMP_DR")
-                    text = text.replace("St.", "TEMP_ST")
-                    text = text.replace("Ph.D.", "TEMP_PHD")
-                    text = text.replace("U.S.", "TEMP_US")
-                    text = text.replace("U.K.", "TEMP_UK")
-                    
-                    sentences =[]
-                    current_sentence = ""
-                    for char in text:
-                        current_sentence += char
-                        if char == '.':
-                            if text.index(current_sentence) + len(current_sentence) == len(text) or \
-                               (text.index(current_sentence) + len(current_sentence) < len(text) and \
-                                text[text.index(current_sentence) + len(current_sentence)] == ' '):
-                                sentences.append(current_sentence.strip())
-                                current_sentence = ""
-                    if current_sentence.strip():
-                        sentences.append(current_sentence.strip())
-
-                    if not sentences or (len(sentences) == 1 and sentences[0] == text):
-                        sentences =[s.strip() for s in text.split('.') if s.strip()]
-                        for i in range(len(sentences)):
-                            if i < len(sentences) -1: 
-                                sentences[i] = sentences[i] + "."
-                            elif not sentences[i].endswith(('.', '!', '?')):
-                                 sentences[i] = sentences[i] + "."
-
+                    sentences = [s.strip() for s in re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text) if s.strip()]
 
                     for i, sentence in enumerate(sentences):
                         if sentence:
-                            # Restore abbreviations
-                            sentence = sentence.replace("TEMP_EG", "e.g.")
-                            sentence = sentence.replace("TEMP_IE", "i.e.")
-                            sentence = sentence.replace("TEMP_ETC", "etc.")
-                            sentence = sentence.replace("TEMP_VS", "vs.")
-                            sentence = sentence.replace("TEMP_MR", "Mr.")
-                            sentence = sentence.replace("TEMP_MRS", "Mrs.")
-                            sentence = sentence.replace("TEMP_MS", "Ms.")
-                            sentence = sentence.replace("TEMP_DR", "Dr.")
-                            sentence = sentence.replace("TEMP_ST", "St.")
-                            sentence = sentence.replace("TEMP_PHD", "Ph.D.")
-                            sentence = sentence.replace("TEMP_US", "U.S.")
-                            sentence = sentence.replace("TEMP_UK", "U.K.")
-                            
                             if not sentence.endswith(('.', '!', '?')):
-                                sentence += '.'
-                                
+                                sentence = sentence + "."
                             story.append(Paragraph(f"• {sentence.strip()}", style_bullet))
             
             if proj.technologies and proj.technologies != ["NA"]:

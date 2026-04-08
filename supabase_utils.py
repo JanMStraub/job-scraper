@@ -60,6 +60,61 @@ def get_existing_jobs_from_supabase(batch_size: int = 1000) -> tuple[set, set]:
 
     return existing_ids, existing_company_title_keys
 
+def filter_existing_job_ids(job_ids: list[str]) -> set[str]:
+    """
+    Checks the database to see which of the provided job_ids already exist.
+    Returns:
+        - A set of job_ids that are present in the 'jobs' table.
+    """
+    if not job_ids:
+        return set()
+    
+    existing_ids = set()
+    try:
+        # Supabase in_ query takes a list and returns matching elements
+        response = (
+            supabase.table(config.SUPABASE_TABLE_NAME)
+            .select("job_id")
+            .in_("job_id", job_ids)
+            .execute()
+        )
+        if response.data:
+            existing_ids = {str(item.get("job_id")) for item in response.data}
+    except Exception as e:
+        print(f"Error filtering existing job IDs: {e}")
+        
+    return existing_ids
+
+def filter_existing_company_title(company_title_pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+    """
+    Checks the database to see which company/title exact matches already exist.
+    (This is less performant over an API than ID checking but better than pulling the world)
+    Returns:
+        - A set of (company, job_title) pairs that exist in the 'jobs' table.
+    """
+    if not company_title_pairs:
+        return set()
+    
+    existing_pairs = set()
+    try:
+        for company, title in company_title_pairs:
+            # Doing individual lookups for small batches since complex OR statements are tricky with postgrest
+            # Consider returning True for all if batch size is too large to avoid excessive requests
+            response = (
+                supabase.table(config.SUPABASE_TABLE_NAME)
+                .select("job_id")
+                .eq("company", company)
+                .eq("job_title", title)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                 existing_pairs.add((company.strip().lower(), title.strip().lower()))
+    except Exception as e:
+         print(f"Error filtering existing company/title pairs: {e}")
+         
+    return existing_pairs
+
 def save_jobs_to_supabase(jobs_data: list):
     """
     Saves or updates a list of job data dictionaries to the Supabase table using upsert.
@@ -74,6 +129,13 @@ def save_jobs_to_supabase(jobs_data: list):
     processed_jobs_data = []
     seen_job_ids = set()
     for job in jobs_data:
+        # Check description first - skip if it's missing, empty, or dummy text
+        desc = job.get('description', '')
+        if not desc or not str(desc).strip() or str(desc).strip() == "No description found":
+             # logging could be added here, but print works for now
+             print(f"Warning: Job {job.get('job_id', 'unknown')} is missing a valid description. Filtering out.")
+             continue
+             
         if 'job_id' in job and job['job_id'] is not None:
              # Since it's text, just ensure it's a string (it likely already is)
              job_id_str = str(job['job_id'])
@@ -255,7 +317,7 @@ def get_jobs_to_rescore(limit: int) -> list:
         logging.error(f"Exception calling RPC get_jobs_for_rescore: {e}", exc_info=True)
         return []
 
-def update_job_score(job_id: str, score: int, resume_score_stage: str = "initial") -> bool:
+def update_job_score(job_id: str, score: int, resume_score_stage: str = "initial", notes: str = None) -> bool:
     """
     Updates the 'resume_score' and 'resume_score_stage' for a specific job_id in the Supabase 'jobs' table.
     Returns True on success, False on failure.
@@ -274,6 +336,9 @@ def update_job_score(job_id: str, score: int, resume_score_stage: str = "initial
             "resume_score": score,
             "resume_score_stage": resume_score_stage
         }
+        if notes is not None:
+            update_payload["notes"] = notes
+        
         response = supabase.table(config.SUPABASE_TABLE_NAME)\
                            .update(update_payload)\
                            .eq("job_id", job_id)\
