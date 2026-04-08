@@ -379,9 +379,9 @@ async def process_job(job_details: Dict[str, Any], base_resume_details: Resume):
                 break # Exit the loop over sections
 
             if section_content and section_content != "NA":
-                logging.info(f"Waiting for {sleep_time} seconds before next request...")
-                time.sleep(sleep_time)
-
+                # Removed manual time.sleep() as it blocks the event loop.
+                # The LLMClient in llm_client.py handles the necessary delays asynchronously.
+                
                 logging.info(f"Personalizing section: {section_name} for job_id: {job_id}")
                 personalized_content = await personalize_section_with_llm(
                     section_name,
@@ -571,9 +571,10 @@ async def run_job_processing_cycle():
 
     logging.info(f"Found {len(jobs_to_process)} jobs to process.")
 
-    # 3. Process All Jobs Concurrently
-    tasks = [process_job(job_details, base_resume_details) for job_details in jobs_to_process]
-    await asyncio.gather(*tasks)
+    # 3. Process Jobs Sequentially
+    # Sequential processing is better for local models (LM Studio) to avoid connection errors or timeouts.
+    for job_details in jobs_to_process:
+        await process_job(job_details, base_resume_details)
 
     logging.info("Finished job processing cycle.")
 
