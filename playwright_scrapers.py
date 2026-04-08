@@ -44,7 +44,7 @@ def process_arbeitsagentur_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://www.arbeitsagentur.de/jobsuche/suche?angebotsart=1&was={quote(query)}&wo={quote(config.GERMANY_LOCATION)}"
+        url = f"https://www.arbeitsagentur.de/jobsuche/suche?angebotsart=1&was={quote(query)}&wo={quote(config.GERMANY_LOCATION)}&umkreis={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="networkidle", timeout=30000)
         _human_delay()
         
@@ -110,7 +110,7 @@ def process_indeed_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://de.indeed.com/jobs?q={quote(query)}&l={quote(config.GERMANY_LOCATION)}"
+        url = f"https://de.indeed.com/jobs?q={quote(query)}&l={quote(config.GERMANY_LOCATION)}&radius={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
         _human_delay(3, 6)
         
@@ -175,7 +175,7 @@ def process_stepstone_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://www.stepstone.de/jobs/{quote(query)}/in-{quote(config.GERMANY_LOCATION)}"
+        url = f"https://www.stepstone.de/jobs/{quote(query)}/in-{quote(config.GERMANY_LOCATION)}?radius={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
         _human_delay(3, 6)
         
@@ -256,7 +256,7 @@ def process_meinestadt_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://jobs.meinestadt.de/deutschland/suche?words={quote(query)}"
+        url = f"https://jobs.meinestadt.de/{quote(config.GERMANY_LOCATION.lower())}/suche?words={quote(query)}&radius={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
         _human_delay(2, 4)
         
@@ -312,7 +312,7 @@ def process_jooble_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://de.jooble.org/Stellenangebote-{quote(query)}/{quote(config.GERMANY_LOCATION)}"
+        url = f"https://de.jooble.org/Stellenangebote-{quote(query)}/{quote(config.GERMANY_LOCATION)}?radius={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
         _human_delay(2, 5)
         
@@ -366,7 +366,7 @@ def process_workwise_query(page, query: str, limit: int = 5) -> list:
     jobs = []
     
     try:
-        url = f"https://www.workwise.io/jobsuche?q={quote(query)}"
+        url = f"https://www.workwise.io/jobsuche?q={quote(query)}&location={quote(config.GERMANY_LOCATION)}&radius={config.SEARCH_RADIUS_KM}"
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
         _human_delay(2, 5)
         

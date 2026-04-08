@@ -52,7 +52,8 @@ JOOBLE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Roboti
 WORKWISE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "Data", "IT", "Low Code"]
 
 # Generic Location setting
-GERMANY_LOCATION = "Deutschland"
+GERMANY_LOCATION = "Germany"
+SEARCH_RADIUS_KM = 30  # Radius in km around GERMANY_LOCATION
 
 # --- Processing Limits ---
 SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"] # Also available: "linkedin", "careers_future"
