@@ -187,6 +187,9 @@ class LLMClient:
         if self.api_key:
             base_kwargs["api_key"] = self.api_key
 
+        if hasattr(config, "LLM_API_BASE") and config.LLM_API_BASE and model.startswith("openai/"):
+            base_kwargs["api_base"] = config.LLM_API_BASE
+
         # Add structured output (Pydantic model)
         if response_format is not None:
             base_kwargs["response_format"] = response_format

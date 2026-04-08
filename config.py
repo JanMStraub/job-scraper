@@ -27,27 +27,43 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("GEMINI_API_KEY") 
 # --- LLM Settings ---
 # Use any model supported by LiteLLM (gemini, openai/gpt-4o-mini, groq/llama-3.3-70b-versatile)
 # Full list of supported models & naming: https://docs.litellm.ai/docs/providers
-LLM_MODEL = "gemini"
+LLM_MODEL = "openai/gpt-oss-20b"
+LLM_API_BASE = os.environ.get("LLM_API_BASE") or "http://localhost:1234/v1"
 
 # --- Search Configuration ---
-LINKEDIN_SEARCH_QUERIES = ["maths lecturer", "statistics lecturer", "maths teacher", "Maths assistant professor", "Maths professor"]
-LINKEDIN_LOCATION = "Singapore"
-LINKEDIN_GEO_ID = 102454443      # Singapore: 102454443, Dubai: 100205264
+LINKEDIN_SEARCH_QUERIES = ["Softwareentwickler", "Data Scientist", "Python Developer", "Machine Learning Engineer", "Robotics Software Engineer", "Software Architect", "Computer Vision Engineer", "Oracle APEX Developer", "Low Code"]
+LINKEDIN_LOCATION = "Germany"
+LINKEDIN_GEO_ID = 101282230      # Germany: 101282230
 LINKEDIN_JOB_TYPE = "F" # F=Full-time, C=Contract, P=Part-time, T=Temporary, I=Internship
-LINKEDIN_JOB_POSTING_DATE = "r86400" # r86400=Past 24h, r604800=Past week
-LINKEDIN_F_WT = 1 # 1=Onsite, 2=Remote, 3=Hybrid
+LINKEDIN_JOB_POSTING_DATE = "r604800" # r86400=Past 24h, r604800=Past week
+LINKEDIN_F_WT = 2 # 1=Onsite, 2=Remote, 3=Hybrid
 
-CAREERS_FUTURE_SEARCH_QUERIES = ["IT Support", "Full Stack Web Developer", "Application Support", "Cybersecurity Analyst", "fresher developer"]
+CAREERS_FUTURE_SEARCH_QUERIES = ["Python Developer", "Machine Learning Engineer", "Data Scientist", "Software Architect"]
 CAREERS_FUTURE_SEARCH_CATEGORIES = ["Information Technology"]
 CAREERS_FUTURE_SEARCH_EMPLOYMENT_TYPES = ["Full Time"]
 
+# --- New Portals Configuration ---
+ARBEITSAGENTUR_SEARCH_QUERIES = ["Softwareentwickler", "Softwareentwickler Python", "Machine Learning Ingenieur", "Robotics Engineer", "Oracle APEX Entwickler", "Low Code"]
+INDEED_SEARCH_QUERIES = ["Softwareentwickler", "Python Developer", "Machine Learning Engineer", "Robotics Engineer", "Software Architect", "Computer Vision", "Low Code"]
+STEPSTONE_SEARCH_QUERIES = ["Softwareentwickler", "Python Softwareentwickler", "Data Scientist", "Machine Learning", "Oracle APEX", "Low Code"]
+MEINESTADT_SEARCH_QUERIES = ["Softwareentwickler", "Python", "IT Projektleiter", "Low Code"]
+JOOBLE_SEARCH_QUERIES = ["Softwareentwickler", "Python Developer", "Robotics", "Machine Learning", "Autonomous Systems", "Low Code"]
+
+# Generic Location setting
+GERMANY_LOCATION = "Deutschland"
+
 # --- Processing Limits ---
-SCRAPING_SOURCES = ["linkedin"] # "linkedin", "careers_future"
-JOBS_TO_SCORE_PER_RUN = 5
-JOBS_TO_CUSTOMIZE_PER_RUN = 1
+SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble"] # Also available: "linkedin", "careers_future"
+JOBS_TO_SCORE_PER_RUN = 100
+JOBS_TO_CUSTOMIZE_PER_RUN = 10
 MAX_JOBS_PER_SEARCH = {
     "linkedin": 2,
     "careers_future": 10,
+    "arbeitsagentur": 5,
+    "indeed": 5,
+    "stepstone": 5,
+    "meinestadt": 5,
+    "jooble": 5,
 }
 
 # =================================================================

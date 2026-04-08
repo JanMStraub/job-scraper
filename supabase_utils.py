@@ -72,16 +72,16 @@ def save_jobs_to_supabase(jobs_data: list):
     # Ensure job_id is present and potentially convert to the correct type if needed
     # (Assuming job_id in jobs_data is already the correct string type for your 'text' column)
     processed_jobs_data = []
+    seen_job_ids = set()
     for job in jobs_data:
         if 'job_id' in job and job['job_id'] is not None:
-             # If your Supabase job_id column was numeric, you'd convert here:
-             # try:
-             #     job['job_id'] = int(job['job_id'])
-             #     processed_jobs_data.append(job)
-             # except (ValueError, TypeError):
-             #     print(f"Warning: Invalid job_id format found: {job.get('job_id')}. Skipping.")
              # Since it's text, just ensure it's a string (it likely already is)
-             job['job_id'] = str(job['job_id'])
+             job_id_str = str(job['job_id'])
+             if job_id_str in seen_job_ids:
+                 print(f"Warning: Duplicate job_id found in batch. Skipping duplicate: {job_id_str}")
+                 continue
+             seen_job_ids.add(job_id_str)
+             job['job_id'] = job_id_str
              processed_jobs_data.append(job)
         else:
             print(f"Warning: Job data missing job_id. Skipping: {job}")
