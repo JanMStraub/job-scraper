@@ -43,17 +43,17 @@ CAREERS_FUTURE_SEARCH_CATEGORIES = ["Information Technology"]
 CAREERS_FUTURE_SEARCH_EMPLOYMENT_TYPES = ["Full Time"]
 
 # --- New Portals Configuration ---
-ARBEITSAGENTUR_SEARCH_QUERIES = ["KI","Softwareentwickler", "Softwareentwickler Python", "Machine Learning Ingenieur", "Robotics Engineer", "Oracle APEX Entwickler", "Low Code"]
-INDEED_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Machine Learning Engineer", "Robotics Engineer", "Software Architect", "Computer Vision", "Low Code"]
-STEPSTONE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Softwareentwickler", "Data Scientist", "Machine Learning", "Oracle APEX", "Low Code"]
-MEINESTADT_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "IT Projektleiter", "Low Code"]
-JOOBLE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python Developer", "Robotics", "Machine Learning", "Autonomous Systems", "Low Code"]
+ARBEITSAGENTUR_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Softwareentwickler Python", "Machine Learning Ingenieur", "Robotics Engineer", "Oracle APEX Entwickler", "Low Code"]
+INDEED_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Python Developer", "Machine Learning Engineer", "Robotics Engineer", "Software Architect", "Computer Vision", "Low Code"]
+STEPSTONE_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Python Softwareentwickler", "Data Scientist", "Machine Learning", "Oracle APEX", "Low Code"]
+MEINESTADT_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Python", "IT Projektleiter", "Low Code"]
+JOOBLE_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Python Developer", "Robotics", "Machine Learning", "Autonomous Systems", "Low Code"]
 
-WORKWISE_SEARCH_QUERIES = ["KI", "Softwareentwickler", "Python", "Data", "IT", "Low Code"]
+WORKWISE_SEARCH_QUERIES = ["KI", "C#", "Softwareentwickler", "Python", "Data", "IT", "Low Code"]
 
 # Generic Location setting
 GERMANY_LOCATION = "Heidelberg"
-SEARCH_RADIUS_KM = 30  # Radius in km around GERMANY_LOCATION
+SEARCH_RADIUS_KM = 10  # Radius in km around GERMANY_LOCATION
 
 # --- Output Settings ---
 OUTPUT_LANGUAGE = "german"      # "german" or "english" — affects resume & Anschreiben text
@@ -64,17 +64,17 @@ SENDER_ADDRESS = os.environ.get("SENDER_ADDRESS") or "Musterstraße 1, 69117 Hei
 
 # --- Processing Limits ---
 SCRAPING_SOURCES = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise"] # Also available: "linkedin", "careers_future"
-JOBS_TO_SCORE_PER_RUN = 100
+JOBS_TO_SCORE_PER_RUN = 200
 JOBS_TO_CUSTOMIZE_PER_RUN = 10
 MAX_JOBS_PER_SEARCH = {
     "linkedin": 2,
     "careers_future": 10,
-    "arbeitsagentur": 5,
-    "indeed": 5,
-    "stepstone": 5,
-    "meinestadt": 5,
-    "jooble": 5,
-    "workwise": 5,
+    "arbeitsagentur": 20,
+    "indeed": 20,
+    "stepstone": 20,
+    "meinestadt": 20,
+    "jooble": 20,
+    "workwise": 20,
 }
 
 # =================================================================
