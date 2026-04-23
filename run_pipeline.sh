@@ -15,6 +15,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Run the job manager (Cleanup & Activity Checks)
+echo "Starting job manager..."
+python job_manager.py
+if [ $? -ne 0 ]; then
+    echo "Job manager failed. Exiting."
+    exit 1
+fi
+
 # Run the scorer
 echo "Starting scorer..."
 python score_jobs.py

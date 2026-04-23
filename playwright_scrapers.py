@@ -5,6 +5,7 @@ import re
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright_stealth import Stealth
 import config
 from scraper import convert_html_to_markdown
 import supabase_utils
@@ -14,10 +15,18 @@ logger = logging.getLogger(__name__)
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 def setup_browser(p):
-    browser = p.chromium.launch(
-        headless=True,
-        args=["--disable-http2", "--disable-blink-features=AutomationControlled"]
-    )
+    launch_args = {
+        "headless": True,
+        "args": ["--disable-http2", "--disable-blink-features=AutomationControlled"]
+    }
+    
+    if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+        proxy_server = random.choice(config.PROXY_LIST)
+        launch_args["proxy"] = {"server": proxy_server}
+        logger.info(f"Playwright using proxy: {proxy_server}")
+
+    browser = p.chromium.launch(**launch_args)
+    
     context = browser.new_context(
         user_agent=USER_AGENT,
         viewport={'width': 1280, 'height': 800},
@@ -505,5 +514,71 @@ def process_museumsbund_query(page, query: str, limit: int = 5) -> list:
                 
     except Exception as e:
         logger.error(f"Error hitting Museumsbund: {e}")
+            
+    return jobs
+
+# --- XING ---
+def process_xing_query(page, query: str, limit: int = 5) -> list:
+    logger.info(f"--- Starting Xing Scraping for '{query}' ---")
+    jobs = []
+    
+    try:
+        url = f"https://www.xing.com/jobs/search?keywords={quote(query)}&location={quote(config.GERMANY_LOCATION)}"
+        page.goto(url, wait_until="domcontentloaded", timeout=40000)
+        _human_delay(3, 6)
+        
+        try:
+            page.click("button#consent-accept-button, button[data-testid='accept-all']", timeout=3000)
+            _human_delay(1, 2)
+        except:
+            pass
+        
+        article_links = page.locator("a[href*='/jobs/api/'], a[href*='/jobs/']").all()
+        links = []
+        for a in article_links:
+            href = a.get_attribute("href")
+            if href and '/jobs/' in href and not '/search' in href:
+                full_url = href if href.startswith('http') else f"https://www.xing.com{href}"
+                job_id = href.split('/')[-1].split('?')[0]
+                if len(job_id) > 5 and full_url not in [l['url'] for l in links]:
+                    links.append({"job_id": f"xing_{job_id}", "url": full_url})
+        
+        links = links[:limit]
+        
+        existing_ids = supabase_utils.filter_existing_job_ids([l["job_id"] for l in links])
+        new_links = [l for l in links if l["job_id"] not in existing_ids]
+        
+        for lnk in new_links:
+            try:
+                page.goto(lnk["url"], wait_until="domcontentloaded")
+                _human_delay(2, 5)
+                
+                html = page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                title_elem = soup.find("h1")
+                title = title_elem.text.strip() if title_elem else "Unknown"
+                
+                company_elem = soup.find("h2") or soup.find("a", {"data-testid": "company-link"})
+                company = company_elem.text.strip() if company_elem else "Unknown"
+                
+                article_elem = soup.find("article") or soup.find("div", {"data-testid": "job-description"}) or soup.find("main")
+                desc_html = str(article_elem) if article_elem else html
+                
+                jobs.append({
+                    "job_id": lnk["job_id"],
+                    "company": company,
+                    "job_title": title,
+                    "location": config.GERMANY_LOCATION,
+                    "level": _determine_job_level(title),
+                    "provider": "xing",
+                    "description": convert_html_to_markdown(desc_html)[:5000],
+                    "posted_at": None,
+                    "source_url": lnk["url"]
+                })
+            except Exception as e:
+                logger.error(f"Error parsing Xing job {lnk['job_id']}: {e}")
+    except Exception as e:
+        logger.error(f"Error hitting Xing: {e}")
             
     return jobs

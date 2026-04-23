@@ -11,6 +11,7 @@ from markdownify import markdownify as md
 import json
 import playwright_scrapers
 from playwright.sync_api import sync_playwright
+from playwright_stealth import Stealth
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -96,6 +97,15 @@ def _fetch_linkedin_job_ids(search_query: str, location: str) -> list:
 
         user_agent = random.choice(user_agents.USER_AGENTS)
         headers = {'User-Agent': user_agent}
+        
+        proxies = None
+        if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+            proxy_url = random.choice(config.PROXY_LIST)
+            proxies = {
+                "http": proxy_url,
+                "https": proxy_url
+            }
+            logging.info(f"Using proxy: {proxy_url}")
     
         logging.info(f"Using User-Agent: {user_agent}")
 
@@ -106,7 +116,7 @@ def _fetch_linkedin_job_ids(search_query: str, location: str) -> list:
         retries = 0
         while retries <= config.MAX_RETRIES:
             try:
-                res = requests.get(target_url, headers=headers, timeout=config.REQUEST_TIMEOUT)
+                res = requests.get(target_url, headers=headers, proxies=proxies, timeout=config.REQUEST_TIMEOUT)
                 res.raise_for_status()
                 break
             except requests.exceptions.HTTPError as e:
@@ -198,6 +208,15 @@ def _fetch_linkedin_job_details(job_id: str) -> dict | None:
     user_agent = random.choice(user_agents.USER_AGENTS)
     headers = {'User-Agent': user_agent}
 
+    proxies = None
+    if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+        proxy_url = random.choice(config.PROXY_LIST)
+        proxies = {
+            "http": proxy_url,
+            "https": proxy_url
+        }
+        logging.info(f"Using proxy for details: {proxy_url}")
+
     logging.info(f"Using User-Agent for details: {user_agent}")
 
 
@@ -207,7 +226,7 @@ def _fetch_linkedin_job_details(job_id: str) -> dict | None:
     retries = 0
     while retries <= config.MAX_RETRIES:
         try:
-            resp = requests.get(job_detail_url, headers=headers, timeout=config.REQUEST_TIMEOUT)
+            resp = requests.get(job_detail_url, headers=headers, proxies=proxies, timeout=config.REQUEST_TIMEOUT)
             resp.raise_for_status()
             break
         except requests.exceptions.HTTPError as e:
@@ -437,9 +456,16 @@ def _fetch_careers_future_jobs(search_query: str) -> list:
 
     try:
         logging.info(f"Fetching skill suggestions for query: '{search_query}' from {careers_future_suggestions_api_url}")
+        
+        proxies = None
+        if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+            proxy_url = random.choice(config.PROXY_LIST)
+            proxies = {"http": proxy_url, "https": proxy_url}
+
         skills_suggestions_response = requests.post(
             careers_future_suggestions_api_url, 
             data=skills_suggestions_payload,
+            proxies=proxies,
             timeout=config.REQUEST_TIMEOUT
             )
 
@@ -488,7 +514,12 @@ def _fetch_careers_future_jobs(search_query: str) -> list:
             total_api_calls_for_search += 1
             logging.info(f"Job search API call {total_api_calls_for_search}: POST to {current_search_url}")
         
-            search_response = requests.post(current_search_url, json=search_payload)
+            proxies = None
+            if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+                proxy_url = random.choice(config.PROXY_LIST)
+                proxies = {"http": proxy_url, "https": proxy_url}
+
+            search_response = requests.post(current_search_url, json=search_payload, proxies=proxies)
             search_response.raise_for_status()
             search_results_data  = search_response.json()
 
@@ -551,7 +582,12 @@ def _fetch_careers_future_job_details(job_id: str) -> dict | None:
     logging.info(f"Attempting to fetch job details for ID: {job_id} from URL: {api_url}")
 
     try:
-        response = requests.get(api_url, timeout=config.REQUEST_TIMEOUT) 
+        proxies = None
+        if getattr(config, 'USE_PROXIES', False) and getattr(config, 'PROXY_LIST', []):
+            proxy_url = random.choice(config.PROXY_LIST)
+            proxies = {"http": proxy_url, "https": proxy_url}
+
+        response = requests.get(api_url, proxies=proxies, timeout=config.REQUEST_TIMEOUT) 
 
         response.raise_for_status()
 
@@ -745,7 +781,7 @@ if __name__ == "__main__":
         logging.info("\n--- Skipping Careers Future Job Scraping per config ---")
 
     # --- Playwright Scrapers ---
-    playwright_sources = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise", "museumsbund"]
+    playwright_sources = ["arbeitsagentur", "indeed", "stepstone", "meinestadt", "jooble", "workwise", "museumsbund", "xing"]
     active_playwright_sources = [s for s in config.SCRAPING_SOURCES if s in playwright_sources]
 
     if active_playwright_sources:
@@ -760,6 +796,7 @@ if __name__ == "__main__":
                 for query in config.ARBEITSAGENTUR_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Arbeitsagentur Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_arbeitsagentur_jobs = playwright_scrapers.process_arbeitsagentur_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_arbeitsagentur_jobs:
@@ -773,6 +810,7 @@ if __name__ == "__main__":
                 for query in config.INDEED_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Indeed Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_indeed_jobs = playwright_scrapers.process_indeed_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_indeed_jobs:
@@ -786,6 +824,7 @@ if __name__ == "__main__":
                 for query in config.STEPSTONE_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing StepStone Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_stepstone_jobs = playwright_scrapers.process_stepstone_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_stepstone_jobs:
@@ -799,6 +838,7 @@ if __name__ == "__main__":
                 for query in config.MEINESTADT_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Meinestadt Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_meinestadt_jobs = playwright_scrapers.process_meinestadt_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_meinestadt_jobs:
@@ -812,6 +852,7 @@ if __name__ == "__main__":
                 for query in config.JOOBLE_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Jooble Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_jooble_jobs = playwright_scrapers.process_jooble_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_jooble_jobs:
@@ -825,6 +866,7 @@ if __name__ == "__main__":
                 for query in config.WORKWISE_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Workwise Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_workwise_jobs = playwright_scrapers.process_workwise_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_workwise_jobs:
@@ -838,11 +880,26 @@ if __name__ == "__main__":
                 for query in config.MUSEUMSBUND_SEARCH_QUERIES:
                     logging.info(f"\n{'='*20} Processing Museumsbund Search Query: '{query}' {'='*20}")
                     page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
                     new_museumsbund_jobs = playwright_scrapers.process_museumsbund_query(page, query, limit=max_jobs_per_search)
                     page.close()
                     if new_museumsbund_jobs:
                         supabase_utils.save_jobs_to_supabase(new_museumsbund_jobs)
                         total_new_jobs_saved += len(new_museumsbund_jobs)
+
+            # Get jobs from Xing
+            if "xing" in config.SCRAPING_SOURCES:
+                logging.info(f"\n--- Starting Xing Job Scraping ---")
+                max_jobs_per_search = config.MAX_JOBS_PER_SEARCH.get("xing", 5)
+                for query in config.XING_SEARCH_QUERIES:
+                    logging.info(f"\n{'='*20} Processing Xing Search Query: '{query}' {'='*20}")
+                    page = context.new_page()
+                    Stealth().apply_stealth_sync(page)
+                    new_xing_jobs = playwright_scrapers.process_xing_query(page, query, limit=max_jobs_per_search)
+                    page.close()
+                    if new_xing_jobs:
+                        supabase_utils.save_jobs_to_supabase(new_xing_jobs)
+                        total_new_jobs_saved += len(new_xing_jobs)
 
             browser.close()
 

@@ -95,6 +95,68 @@ async def _check_single_linkedin_job_active(job_id: str, client: httpx.AsyncClie
     logging.error(f"Failed to check job {job_id} activity after {config.ACTIVE_CHECK_MAX_RETRIES + 1} attempts.")
     return None # Failed to determine status
 
+async def _check_generic_job_active(job_url: str, job_id: str, client: httpx.AsyncClient) -> bool | None:
+    """
+    Checks if a generic job URL is still active.
+    Returns:
+        True if the job appears inactive (404).
+        False if the job appears active.
+        None if the check failed.
+    """
+    if not job_url:
+        return None
+        
+    retries = 0
+    inactive_keywords = ["nicht mehr verfügbar", "job is no longer available", "job is closed", "nicht gefunden", "no longer accepting applications"]
+
+    while retries <= config.ACTIVE_CHECK_MAX_RETRIES:
+        try:
+            sleep_time = random.uniform(2.0, 5.0)
+            await asyncio.sleep(sleep_time)
+
+            user_agent = random.choice(user_agents.USER_AGENTS)
+            headers = {'User-Agent': user_agent}
+
+            logging.debug(f"Checking job {job_id} URL: {job_url} with UA: {user_agent}")
+
+            response = await client.get(
+                job_url,
+                headers=headers,
+                timeout=config.ACTIVE_CHECK_TIMEOUT,
+                follow_redirects=True
+            )
+
+            if response.status_code == 404:
+                logging.info(f"Job {job_id} returned 404. Marking as inactive.")
+                return True
+
+            if response.status_code >= 400:
+                logging.warning(f"Job {job_id} check failed with status {response.status_code}. Assuming active for now.")
+                return False
+
+            response_text_lower = response.text.lower()
+            for keyword in inactive_keywords:
+                if keyword in response_text_lower:
+                    logging.info(f"Job {job_id} contains inactive keyword '{keyword}'. Marking as inactive.")
+                    return True
+
+            logging.debug(f"Job {job_id} appears active (Status: {response.status_code}).")
+            return False
+
+        except httpx.TimeoutException:
+            logging.warning(f"Timeout checking job {job_id} (Attempt {retries+1}).")
+        except httpx.RequestError as e:
+            logging.warning(f"Request error checking job {job_id} (Attempt {retries+1}): {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error checking job {job_id} (Attempt {retries+1}): {e}")
+
+        retries += 1
+        if retries <= config.ACTIVE_CHECK_MAX_RETRIES:
+            wait_time = config.ACTIVE_CHECK_RETRY_DELAY + random.uniform(0, 5)
+            await asyncio.sleep(wait_time)
+
+    return None
+
 # --- Main Management Functions ---
 
 async def mark_expired_jobs():
@@ -145,8 +207,8 @@ async def mark_expired_jobs():
     logging.info("--- Finished Task: Mark Expired Jobs ---")
 
 
-async def check_linkedin_job_activity():
-    """Checks if active jobs are still available on LinkedIn."""
+async def check_all_job_activity():
+    """Checks if active jobs are still available across all providers."""
     logging.info("--- Starting Task: Check Job Activity ---")
     check_older_than_date = get_past_date(config.JOB_CHECK_DAYS)
     check_older_than_date_str = check_older_than_date.isoformat()
@@ -154,14 +216,10 @@ async def check_linkedin_job_activity():
 
     jobs_to_check = []
     try:
-        # Query for jobs needing a check: active AND older than N days
-        # Order by last_checked ASC to prioritize oldest checks
-        # Limit the number of checks per run
-        excluded_statuses = ['applied', 'offer', 'interviewing'] # Add any status that means "don't expire"
+        excluded_statuses = ['applied', 'offer', 'interviewing']
         query = supabase.table(config.SUPABASE_TABLE_NAME)\
-            .select("job_id, last_checked")\
+            .select("job_id, provider, source_url, last_checked")\
             .eq("is_active", True)\
-            .eq("provider", "linkedin")\
             .not_.in_("status", excluded_statuses)\
             .lt("last_checked", check_older_than_date_str)\
             .order("last_checked", desc=False)\
@@ -174,17 +232,19 @@ async def check_linkedin_job_activity():
             logging.info(f"Found {len(jobs_to_check)} active jobs to check (limit: {config.JOB_CHECK_LIMIT}).")
         else:
             logging.info("No active jobs need checking currently.")
-            return # Nothing to do
+            return
 
     except Exception as e:
         logging.error(f"Error fetching jobs to check: {e}")
-        return # Cannot proceed
+        return
 
-    # Use httpx.AsyncClient for connection pooling and efficiency
     async with httpx.AsyncClient() as client:
         tasks = []
         for job in jobs_to_check:
-            tasks.append(_check_single_linkedin_job_active(job['job_id'], client))
+            if job['provider'] == 'linkedin':
+                tasks.append(_check_single_linkedin_job_active(job['job_id'], client))
+            else:
+                tasks.append(_check_generic_job_active(job.get('source_url'), job['job_id'], client))
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     inactive_job_ids = []
@@ -196,38 +256,130 @@ async def check_linkedin_job_activity():
         if isinstance(result, Exception):
             logging.error(f"Exception checking job {job_id}: {result}")
             failed_check_job_ids.append(job_id)
-        elif result is True: # Job confirmed inactive
+        elif result is True:
             inactive_job_ids.append(job_id)
-        elif result is False: # Job confirmed active
+        elif result is False:
             active_checked_job_ids.append(job_id)
-        elif result is None: # Check failed after retries
+        elif result is None:
             failed_check_job_ids.append(job_id)
 
     logging.info(f"Activity Check Summary: Inactive={len(inactive_job_ids)}, Active={len(active_checked_job_ids)}, Failed={len(failed_check_job_ids)}")
 
-    # Update Supabase
     try:
         if inactive_job_ids:
             update_inactive = supabase.table(config.SUPABASE_TABLE_NAME)\
                 .update({"job_state": "removed", "is_active": False, "last_checked": now_str})\
                 .in_("job_id", inactive_job_ids)\
                 .execute()
-            # Add logging for update_inactive response count/data
-            logging.info(f"Marked {len(inactive_job_ids)} jobs as removed. Response: {update_inactive}")
-
+            logging.info(f"Marked {len(inactive_job_ids)} jobs as removed.")
 
         if active_checked_job_ids:
             update_active = supabase.table(config.SUPABASE_TABLE_NAME)\
                 .update({"last_checked": now_str})\
                 .in_("job_id", active_checked_job_ids)\
                 .execute()
-            # Add logging for update_active response count/data
             logging.info(f"Updated last_checked for {len(active_checked_job_ids)} active jobs.")
 
     except Exception as e:
         logging.error(f"Error updating job statuses after activity check: {e}")
 
     logging.info("--- Finished Task: Check Job Activity ---")
+
+async def remove_duplicate_jobs():
+    """Identifies and marks older duplicate jobs (same company and title) as inactive."""
+    logging.info("--- Starting Task: Remove Duplicate Jobs ---")
+    
+    try:
+        # Fetch all active jobs to check for duplicates
+        response = supabase.table(config.SUPABASE_TABLE_NAME)\
+            .select("job_id, company, job_title, scraped_at")\
+            .eq("is_active", True)\
+            .execute()
+            
+        if not response.data:
+            logging.info("No active jobs found for duplicate check.")
+            return
+            
+        jobs = response.data
+        seen_pairs = {} # Maps (company, title) -> oldest job record
+        duplicate_ids = []
+        
+        for job in jobs:
+            company = (job.get("company") or "").strip().lower()
+            title = (job.get("job_title") or "").strip().lower()
+            
+            if not company or not title:
+                continue
+                
+            pair = (company, title)
+            if pair in seen_pairs:
+                # We have a duplicate. Keep the one scraped most recently.
+                existing_job = seen_pairs[pair]
+                try:
+                    # Depending on scraped_at format, we might need parsing. Usually it's ISO format string
+                    # We will keep the NEWER one, and mark the OLDER one as duplicate
+                    existing_time = datetime.fromisoformat(existing_job["scraped_at"].replace("Z", "+00:00"))
+                    current_time = datetime.fromisoformat(job["scraped_at"].replace("Z", "+00:00"))
+                    
+                    if current_time > existing_time:
+                        # Current is newer, mark existing as duplicate and keep current
+                        duplicate_ids.append(existing_job["job_id"])
+                        seen_pairs[pair] = job
+                    else:
+                        # Current is older, mark current as duplicate
+                        duplicate_ids.append(job["job_id"])
+                except Exception as e:
+                    logging.warning(f"Error comparing dates for jobs {job['job_id']} and {existing_job['job_id']}: {e}")
+                    # Default: mark current as duplicate
+                    duplicate_ids.append(job["job_id"])
+            else:
+                seen_pairs[pair] = job
+                
+        if duplicate_ids:
+            logging.info(f"Found {len(duplicate_ids)} duplicate active jobs to mark as removed.")
+            update_inactive = supabase.table(config.SUPABASE_TABLE_NAME)\
+                .update({"job_state": "removed", "is_active": False})\
+                .in_("job_id", duplicate_ids)\
+                .execute()
+            logging.info(f"Successfully marked duplicates as removed.")
+        else:
+            logging.info("No duplicate jobs found.")
+            
+    except Exception as e:
+        logging.error(f"Error removing duplicate jobs: {e}")
+        
+    logging.info("--- Finished Task: Remove Duplicate Jobs ---")
+
+
+async def deactivate_low_score_jobs():
+    """Identifies jobs with resume_score < 70 and marks them as inactive."""
+    logging.info("--- Starting Task: Deactivate Low Score Jobs ---")
+    try:
+        # Fetch jobs that are active and have a score < 70
+        response = supabase.table(config.SUPABASE_TABLE_NAME)\
+            .select("job_id, resume_score")\
+            .eq("is_active", True)\
+            .not_.is_("resume_score", "null")\
+            .lt("resume_score", 70)\
+            .execute()
+            
+        if response.data:
+            low_score_jobs = [job['job_id'] for job in response.data]
+            logging.info(f"Found {len(low_score_jobs)} active jobs with score < 70.")
+            
+            if low_score_jobs:
+                update_response = supabase.table(config.SUPABASE_TABLE_NAME)\
+                    .update({"job_state": "rejected_low_score", "is_active": False})\
+                    .in_("job_id", low_score_jobs)\
+                    .execute()
+                logging.info(f"Successfully deactivated {len(low_score_jobs)} low score jobs.")
+        else:
+            logging.info("No active low score jobs found.")
+            
+    except Exception as e:
+        logging.error(f"Error deactivating low score jobs: {e}")
+        
+    logging.info("--- Finished Task: Deactivate Low Score Jobs ---")
 
 
 async def delete_old_inactive_jobs():
@@ -275,7 +427,9 @@ async def main():
     start_time = time.time()
 
     await mark_expired_jobs()
-    await check_linkedin_job_activity()
+    await remove_duplicate_jobs()
+    await check_all_job_activity()
+    await deactivate_low_score_jobs()
     await delete_old_inactive_jobs()
 
     end_time = time.time()
