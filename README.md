@@ -1,13 +1,25 @@
 # Job Scraper & Application Assistant
 
-This project is a comprehensive suite of tools designed to automate and enhance the job searching process, primarily focusing on LinkedIn and German job portals. It scrapes job postings, parses resumes, scores job suitability against a candidate's resume, manages job application statuses, and can even generate custom PDF resumes. The system is designed to run locally, leveraging local AI models (such as LM Studio/Ollama) for advanced text processing and a local instance of Supabase for data storage.
+This project is a comprehensive suite of tools designed to automate and enhance the job searching process, primarily focusing on LinkedIn, Xing, and various German job portals. It scrapes job postings, parses resumes, scores job suitability against a candidate's resume, manages job application statuses, and can even generate custom PDF resumes and cover letters. The system is designed to run locally, leveraging local AI models (such as LM Studio/Ollama) for advanced text processing and a local instance of Supabase for data storage.
+
+## New Features (Recent Updates)
+
+- **Streamlit Dashboard**: A new interactive local UI to view high-relevance jobs (score >= 70), reject unsuitable matches, and trigger background generation of tailored application documents. ([app.py](app.py))
+- **Pipeline Automation**: A unified `run_pipeline.sh` script to execute the entire workflow (scraping, cleaning, scoring, and dashboard) in one go.
+- **Expanded Job Portals**: Support for **Xing**, **Workwise**, and **Museumsbund.de**, in addition to LinkedIn and CareersFuture.
+- **AI Cover Letter Generation**: Automated generation of professional "Anschreiben" in German or English, tailored specifically to the job description and your resume. ([anschreiben_generator.py](anschreiben_generator.py))
+- **Enhanced Scraping Robustness**: 
+  - Integrated **Proxy Support** for Playwright.
+  - Configurable **Search Radius** for all portals.
+  - Automated job activity checks to mark expired listings.
+- **Local LLM Optimization**: Implemented JSON cleaning, whitespace normalization, and sequential processing to ensure stability when using local models like Llama 3 or Mistral.
 
 ## Features
 
-- **Job Scraping**: Automatically scrapes job postings. ([scraper.py](scraper.py))
+- **Job Scraping**: Automatically scrapes job postings from LinkedIn, Xing, CareersFuture, Workwise, and Museumsbund. ([scraper.py](scraper.py), [playwright_scrapers.py](playwright_scrapers.py))
 - **Resume Parsing**:
   - Extracts text from PDF resumes using `pdfplumber`. ([resume_parser.py](resume_parser.py))
-  - Utilizes Google Gemini AI to parse resume text into structured data ([parse_resume_with_ai.py](parse_resume_with_ai.py))
+  - Utilizes AI to parse resume text into structured data.
 - **Job Scoring**: Scores job descriptions against a parsed resume using AI to determine suitability. ([score_jobs.py](score_jobs.py))
 - **Universal LLM Support**: Supports 400+ model providers (Gemini, OpenAI, Anthropic, Ollama, Groq, etc.) via a unified abstraction layer. ([llm_client.py](llm_client.py))
 - **Job Management**:
@@ -16,28 +28,20 @@ This project is a comprehensive suite of tools designed to automate and enhance 
   - Periodically checks if active jobs are still available.
     ([job_manager.py](job_manager.py))
 - **Data Storage**: Uses Supabase to store job data, resume details, and application statuses. (Utility functions in [supabase_utils.py](supabase_utils.py))
-- **Custom PDF Resume Generation**: Generates ATS-friendly PDF resumes from structured resume data. ([pdf_generator.py](pdf_generator.py))
-- **AI-Powered Text Processing**: Leverages any configured LLM for tasks like resume parsing and job description formatting.
-- **Quota Management**: Built-in rate limiting, exponential backoff, and daily budget tracking for LLM API calls. Features dynamic model rotation (e.g., automatically switching between Gemini models) to bypass rate limitations.
-- **Local-First Architecture**: Completely removes reliance on external pipelines or GitHub actions to protect your data natively on your machine, leveraging local endpoints.
+- **Custom PDF Resume & Cover Letter Generation**: Generates ATS-friendly PDF resumes and AI-tailored cover letters. ([pdf_generator.py](pdf_generator.py), [anschreiben_generator.py](anschreiben_generator.py))
+- **Quota Management**: Built-in rate limiting, exponential backoff, and daily budget tracking for LLM API calls.
+- **Local-First Architecture**: Completely removes reliance on external pipelines, protecting your data natively on your machine.
 
 ## Tech Stack
 
 - **Programming Language**: Python 3.11.9
-- **Web Scraping/HTTP**:
-  - `requests`
-  - `httpx`
-  - `BeautifulSoup4` (for HTML parsing)
-  - `Playwright` (for browser automation)
-- **PDF Processing**:
-  - `pdfplumber` (for text extraction)
-  - `ReportLab` (for PDF generation)
-- **AI/LLM**: `litellm` (Universal proxy supporting Gemini, OpenAI, Claude, etc.), `google-genai`
+- **Web Scraping/HTTP**: `requests`, `httpx`, `BeautifulSoup4`, `Playwright` (with proxy support)
+- **UI Framework**: `Streamlit` (for the dashboard)
+- **PDF Processing**: `pdfplumber`, `ReportLab`
+- **AI/LLM**: `litellm` (Universal proxy), `google-genai`
 - **Database**: Supabase (`supabase`)
 - **Data Validation**: `Pydantic`
 - **Environment Management**: `python-dotenv`
-- **Text Conversion**: `html2text`
-- **CI/CD**: GitHub Actions
 
 ## Setup and Installation
 
@@ -61,7 +65,7 @@ This project is designed to run locally on your machine. Follow these steps to s
 3.  **Create a Local Supabase Instance:**
     - Install the Supabase CLI: `brew install supabase/tap/supabase` (on macOS).
     - Run `supabase start` in your project folder to boot the local database.
-    - Set up the necessary tables and buckets from the output.
+    - Set up the necessary tables and buckets from the output or use scripts in `supabase_setup/`.
 
 4.  **Local AI Setup (LM Studio / Ollama):**
     - You can run your LLMs locally to process resumes and match jobs.
@@ -112,54 +116,51 @@ This project is designed to run locally on your machine. Follow these steps to s
       }
       ```
 
-    - Run the scripts individually or set up a local cron job to execute them:
-      ```bash
-      python scraper.py
-      python score_jobs.py
-      python custom_resume_generator.py
-      ```
-
 ## Usage
 
-After the initial setup and the parser has successfully run, the system will operate when the crawler is invoked via `python scraper.py`.
+### The Easy Way: Integrated Pipeline
+Run the entire automated workflow with a single command:
+```bash
+./run_pipeline.sh
+```
+This script will:
+1. Scrape new jobs.
+2. Clean up expired listings.
+3. Score new jobs against your resume.
+4. Launch the Streamlit dashboard.
 
-You can interact with the data directly through your Supabase dashboard to view scraped jobs, your parsed resume, and job scores.
-
-### Web Interface for Viewing Data
-
-A Next.js web application is available to view and manage the scraped jobs, your resume details, and job scores from the database.
-
-- **Repository:** [jobs-scrapper-web](https://github.com/anandanair/jobs-scraper-web)
-### Running Locally
-
+### The Manual Way: Individual Components
 All scripts execute locally to avoid tracking quotas across networks:
+1. **Scraping and saving jobs**: `python scraper.py`
+2. **Evaluating AI job scores**: `python score_jobs.py`
+3. **Managing expired DB states**: `python job_manager.py`
+4. **Dashboard**: `streamlit run app.py`
 
-1. Scraping and saving jobs: `python scraper.py`
-2. Evaluating AI job scores: `python score_jobs.py`
-3. Managing expired DB states: `python job_manager.py`
-
-
+### Interactive Dashboard
+The Streamlit dashboard (`app.py`) allows you to:
+- Review jobs with high suitability scores (>= 70).
+- Read full job descriptions.
+- **Reject** jobs to remove them from your view.
+- **Generate Anschreiben**: Triggers the AI to create a tailored cover letter and resume PDF for the specific job.
 
 ## Project Structure
 
 ```
 .
-├── .gitignore                  # Specifies intentionally untracked files that Git should ignore
-├── README.md                   # This file
-├── config.py                   # Configuration settings (API keys, search parameters)
-├── custom_resume_generator.py  # Script to generate customized resumes (if applicable)
-├── job_manager.py              # Manages job statuses
-├── llm_client.py               # Universal LLM abstraction (LiteLLM) with rate limiting
-├── models.py                   # Pydantic models for data validation
-├── pdf_generator.py            # Generates PDF resumes
-├── requirements.txt            # Python dependencies
-├── resume_parser.py            # Parses resume PDF from Supabase Storage and saves to DB
-├── score_jobs.py               # Scores job suitability against resumes
-├── scraper.py                  # Core scraping logic for LinkedIn and CareersFuture
-├── supabase_setup/             # SQL scripts for Supabase database initialization
-│   └── init.sql
-├── supabase_utils.py           # Utility functions for interacting with Supabase
-└── user_agents.py              # List of user-agents for web scraping
+├── app.py                      # Streamlit dashboard UI
+├── run_pipeline.sh             # Master automation script
+├── anschreiben_generator.py    # AI logic for tailored cover letters
+├── scraper.py                  # Core scraping orchestrator
+├── playwright_scrapers.py      # Detailed scraping logic (LinkedIn, Xing, etc.)
+├── score_jobs.py               # AI scoring logic
+├── job_manager.py              # Database maintenance and expiry checks
+├── llm_client.py               # Universal LLM abstraction
+├── pdf_generator.py            # PDF generation (Resume & Cover Letters)
+├── resume_parser.py            # Converts PDF resume to structured DB data
+├── supabase_utils.py           # Database interaction layer
+├── config.py                   # Configuration (Queries, Radius, Models)
+├── models.py                   # Data schemas (Pydantic)
+└── requirements.txt            # Project dependencies
 ```
 
 ## Contributing
@@ -167,14 +168,12 @@ All scripts execute locally to avoid tracking quotas across networks:
 Contributions are welcome! If you'd like to contribute, please follow these steps:
 
 1.  **Fork the Repository:** Create your own fork of the project on GitHub.
-2.  **Create a Branch:** Create a new branch in your fork for your feature or bug fix (e.g., `git checkout -b feature/your-awesome-feature` or `git checkout -b fix/issue-description`).
+2.  **Create a Branch:** Create a new branch in your fork for your feature or bug fix (e.g., `git checkout -b feature/your-awesome-feature`).
 3.  **Make Changes:** Implement your changes in your branch.
 4.  **Test Your Changes:** Ensure your changes work as expected and do not break existing functionality.
-5.  **Commit Your Changes:** Commit your changes with clear and descriptive commit messages (e.g., `git commit -m 'feat: Add awesome new feature'`).
-6.  **Push to Your Fork:** Push your changes to your forked repository (`git push origin feature/your-awesome-feature`).
-7.  **Open a Pull Request:** Go to the original repository and open a Pull Request from your forked branch to the main branch of the original repository. Provide a clear description of your changes in the Pull Request.
-
-Please ensure your code adheres to the existing style and that any new dependencies are added to `requirements.txt`.
+5.  **Commit Your Changes:** Commit your changes with clear and descriptive commit messages.
+6.  **Push to Your Fork:** Push your changes to your forked repository.
+7.  **Open a Pull Request:** Go to the original repository and open a Pull Request.
 
 ## License
 
@@ -191,7 +190,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for more 
 
 ## Disclaimer
 
-This project is for educational and personal use only. Scraping websites like LinkedIn may be against their Terms of Service. Use this tool responsibly and at your own risk. The developers of this project are not responsible for any misuse or any action taken against your account by LinkedIn or other platforms.
+This project is for educational and personal use only. Scraping websites like LinkedIn or Xing may be against their Terms of Service. Use this tool responsibly and at your own risk. The developers of this project are not responsible for any misuse or any action taken against your account by LinkedIn or other platforms.
 
 ## Contact
 
