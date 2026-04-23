@@ -32,3 +32,11 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Pipeline completed successfully."
+
+# Start the dashboard if it isn't already running
+if ! pgrep -f "streamlit run app.py" > /dev/null; then
+    echo "Starting Streamlit dashboard in the background..."
+    nohup streamlit run app.py > streamlit.log 2>&1 &
+else
+    echo "Streamlit dashboard is already running."
+fi

@@ -11,3 +11,5 @@ playwright
 markdownify
 reportlab
 playwright-stealth
+streamlit
+pandas
